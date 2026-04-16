@@ -1,0 +1,35 @@
+# AI Models
+*.task
+*.tflite
+*.onnx
+
+# Data Caching
+*.npy
+*.npz
+
+# Video Artifacts
+uploads/
+!uploads/.gitkeep
+static/clips/*.mp4
+static/clips/*.webm
+!static/clips/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+.venv
+env/
+build/
+dist/
+*.egg-info/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/
