@@ -2,6 +2,9 @@
 *.task
 *.tflite
 *.onnx
+*.wasm
+*.data
+*.binarypb
 
 # Data Caching
 *.npy

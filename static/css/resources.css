@@ -1,0 +1,111 @@
+/* Resources Page (Project List) */
+.page-container {
+    max-width: 1200px;
+    margin: 2rem auto;
+    padding: 0 1.5rem;
+}
+
+.upload-container {
+    background: var(--card-bg);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow);
+    padding: 2rem;
+    margin-bottom: 3rem;
+}
+
+.upload-header { margin-bottom: 1.5rem; }
+.upload-header h2 { margin: 0; font-size: 1.25rem; font-weight: 700; }
+.upload-header p { margin: 0.25rem 0 0 0; color: var(--text-muted); font-size: 0.875rem; }
+
+.upload-form { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+.input-group { display: flex; flex-direction: column; gap: 0.5rem; }
+.input-group label { font-size: 0.875rem; font-weight: 600; color: var(--text-main); }
+
+.drop-zone {
+    border: 2px dashed var(--border);
+    border-radius: 8px;
+    padding: 2rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: #0f172a;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+}
+.drop-zone:hover, .drop-zone.dragover { border-color: var(--primary); background: #1e293b; }
+.drop-zone-icon { font-size: 2rem; }
+.drop-zone-text { font-size: 0.875rem; color: var(--text-muted); }
+
+.selected-file-info { margin-top: 0.5rem; font-size: 0.875rem; font-weight: 500; color: var(--primary); }
+.upload-submit-container { grid-column: span 2; display: flex; justify-content: flex-end; padding-top: 0.5rem; }
+
+.section-header {
+    margin: 3rem 0 1.5rem 0;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--border);
+}
+.section-header h2 { margin: 0; font-size: 1.5rem; font-weight: 700; }
+
+.video-list {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1.5rem;
+}
+
+.project-card {
+    display: flex;
+    flex-direction: column;
+    background: var(--card-bg);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow);
+    transition: transform 0.2s;
+    overflow: hidden;
+    min-width: 0;
+}
+.project-card:hover { transform: translateY(-4px); box-shadow: 0 12px 20px -5px rgba(0, 0, 0, 0.5); }
+
+.project-preview { width: 100%; background: #020617; border-bottom: 1px solid var(--border); }
+.project-preview img { display: block; width: 100%; height: auto; }
+
+.project-info { padding: 1.25rem; display: flex; flex-direction: column; flex-grow: 1; }
+.project-info h3 { margin: 0 0 0.25rem 0; font-size: 1.1rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.project-meta { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.75rem; }
+
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.2rem 0.6rem;
+    border-radius: 9999px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    background: #334155;
+    color: #cbd5e1;
+}
+.status-badge.completed { background: #065f46; color: #ecfdf5; }
+.status-badge.analyzing { background: #92400e; color: #fffbeb; }
+
+.project-actions { padding: 0 1.25rem 1.25rem 1.25rem; display: flex; flex-direction: column; gap: 0.75rem; }
+.primary-actions button { width: 100%; }
+.secondary-actions { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 0.75rem; margin-bottom: 0.25rem; }
+
+.btn-link {
+    background: none; border: none; padding: 0; color: var(--text-muted); font-size: 0.75rem; font-weight: 500;
+    display: flex; align-items: center; gap: 0.25rem; cursor: pointer; transition: color 0.2s;
+}
+.btn-link:hover { color: var(--primary); }
+.btn-link.danger:hover { color: #ef4444; }
+
+.progress-container { margin-top: 0.75rem; width: 100%; }
+.progress-bar-bg { height: 6px; background: #334155; border-radius: 999px; overflow: hidden; }
+.progress-bar-fill { height: 100%; background: var(--primary); transition: width 0.3s ease; }
+
+input[type="text"] {
+    background-color: #0f172a; color: var(--text-main); padding: 0.625rem 1rem;
+    border: 1px solid var(--border); border-radius: 8px; font-size: 0.95rem; outline: none;
+}
+input[type="text"]:focus { border-color: var(--primary); }

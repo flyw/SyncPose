@@ -1,0 +1,85 @@
+/* Dashboard (PosePage) Styles */
+.dashboard-layout {
+    max-width: 1200px;
+    margin: 2rem auto;
+    padding: 0 1.5rem;
+}
+
+.dashboard-header { margin-bottom: 2rem; }
+
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.5rem;
+    margin-bottom: 2.5rem;
+}
+
+.stats-card {
+    background: var(--card-bg);
+    padding: 1.5rem;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+    position: relative;
+}
+
+.stats-icon {
+    font-size: 2rem;
+    background: #0f172a;
+    width: 56px; height: 56px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 12px;
+}
+
+.stats-content h3 { margin: 0; font-size: 0.9rem; color: var(--text-muted); }
+.stats-number { font-size: 1.5rem; font-weight: 700; margin: 0.25rem 0; }
+
+.stats-card .btn-link { position: absolute; top: 1.25rem; right: 1.25rem; }
+
+.action-list { list-style: none; padding: 0; margin: 0; }
+.action-list li {
+    display: flex; justify-content: space-between; padding: 1rem;
+    background: #1e293b; border-radius: 8px; margin-bottom: 0.75rem;
+    border: 1px solid var(--border);
+}
+
+.action-name { font-weight: 600; }
+.action-range { color: var(--primary); font-family: monospace; }
+
+.keyframe-dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 1.5rem;
+    margin-top: 1.5rem;
+}
+
+.keyframe-card-mini {
+    background: #020617;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    transition: transform 0.2s;
+}
+
+.keyframe-card-mini:hover {
+    transform: translateY(-4px);
+    border-color: var(--primary);
+}
+
+.keyframe-card-mini img {
+    width: 100%;
+    aspect-ratio: 9 / 16;
+    object-fit: contain;
+    background: #000;
+}
+
+.keyframe-card-mini span {
+    font-size: 10px;
+    padding: 4px;
+    text-align: center;
+    color: var(--text-muted);
+}
