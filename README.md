@@ -4,100 +4,93 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.95+-009688.svg)](https://fastapi.tiangolo.com/)
 
-**SyncPose** is a high-precision pose alignment and similarity analysis system designed for AI digital human video production. It leverages MediaPipe's pose estimation to automatically find, align, and extract matching motion segments across video frames, ensuring seamless transitions and visual consistency.
+**SyncPose** is a professional-grade pose alignment and motion refinement system tailored for high-end AI digital human video production. By combining **MediaPipe's** precision with advanced mathematical warping (**MLS**) and temporal smoothing (**RIFE**), it transforms "jumpy" video loops into seamless, production-ready motion assets.
 
-## ✨ Key Features
+---
 
-- **🔄 Iterative Refinement Pipeline**: A node-based workflow where you can stack Spatial (MLS) and Temporal (RIFE) optimizations.
-- **🎯 Real-time Frontend Calibration**: Uses MediaPipe in the browser to ensure the skeleton overlay is 100% perfectly aligned with the video pixels.
-- **🧬 MLS Warp (Moving Least Squares)**: Mathematically rigorous pose alignment (via TPS) to fix "jumpy" transitions in loops.
-- **🚀 RIFE Interpolation**: Local AI-powered frame interpolation for buttery smooth motion.
-- **⚡ Pro Slicing Editor**: Frame-accurate slicing tool with "📌 Pin current frame" and precision adjustment buttons.
-- **🖥️ Modern Dashboard**: A dark-themed SPA for managing multiple video projects and clip iterations.
-- **📦 Fully Localized**: All AI models and JS libraries run locally for high performance and privacy.
+## ✨ Core Innovations
+
+### 🔄 Iterative Refinement Pipeline
+A non-destructive workflow allowing multiple optimization passes. Each "refined" clip can be used as the input for the next stage, enabling a "Slicing -> MLS Warp -> RIFE Smoothing" iterative chain.
+
+### 🧬 MLS Warp (Moving Least Squares)
+Uses thin-plate spline (TPS) and MLS algorithms to spatially deform video frames. This allows the end of a clip to perfectly match the starting "Keyframe" pose, fixing joint misalignments that cause visual pops in loops.
+
+### 🚀 Local AI Engine
+- **MediaPipe Tasks API**: Real-time browser-side calibration.
+- **Practical-RIFE**: High-performance frame interpolation for buttery-smooth transitions.
+- **Lossless Extraction**: Frame-level precision with PNG-0 compression to preserve every pixel.
+
+### ⚡ Pro Slicing Editor
+Frame-accurate timeline with "Pin current frame" functionality and instant slice exporting for rapid iteration.
+
+---
+
+## 🛠️ Architecture & Workflow
+
+### How it works:
+1.  **Analyze**: Extract 33 3D landmarks from your source video.
+2.  **Keyframe**: Set a global "anchor pose" that every action should return to.
+3.  **Slice**: Identify specific motion segments (e.g., a wave, a nod).
+4.  **Align (MLS)**: Force the last few frames to "warp" towards the anchor pose.
+5.  **Smooth (RIFE)**: Interpolate transition frames to eliminate velocity gaps.
+
+---
 
 ## 🚀 Quick Start
 
 ### Prerequisites
-
-- **Conda** (Miniconda or Anaconda)
-- **NVIDIA GPU** (RTX 30/40/50 series recommended for RIFE inference)
-- **FFmpeg** (system-wide installation for video processing)
+- **OS**: Linux (Ubuntu 22.04+ recommended) or Windows 11.
+- **GPU**: NVIDIA RTX 30/40/50 series (8GB+ VRAM required for RIFE).
+- **Env**: Conda (Miniconda/Anaconda).
 
 ### Installation & Environment Setup
 
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/yourusername/SyncPose.git
-   cd SyncPose
-   ```
+1.  **Clone & Enter:**
+    ```bash
+    git clone https://github.com/yourusername/SyncPose.git
+    cd SyncPose
+    ```
 
-2. **Create and activate Conda environment:**
-   ```bash
-   conda create -n syncpose python=3.10 -y
-   conda activate syncpose
-   ```
+2.  **Conda Environment:**
+    ```bash
+    conda create -n syncpose python=3.10 -y
+    conda activate syncpose
+    ```
 
-3. **Install PyTorch (CUDA 12.1+ compatible):**
-   *Recommended for high-end GPUs like RTX 5080:*
-   ```bash
-   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
-   ```
+3.  **High-Performance PyTorch (CUDA 12.1+):**
+    *Recommended for RTX 4090/5080 users:*
+    ```bash
+    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+    ```
 
-4. **Install other dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-5. **Download AI Models & Libraries:**
-   Run the included script to download MediaPipe models and assets:
-   ```bash
-   ./download_models.sh
-   ```
+4.  **Dependencies & Assets:**
+    ```bash
+    pip install -r requirements.txt
+    ./download_models.sh
+    ```
 
 ### Usage
 
-1. **Launch the server:**
-   ```bash
-   python -m app.main
-   ```
+1.  **Start Backend:** `python -m app.main`
+2.  **Open UI:** `http://localhost:8000` (Chrome/Edge highly recommended).
 
-2. **Access the UI:**
-   Open `http://localhost:8000` in Chrome/Edge.
-
-3. **Refinement Workflow (Iterative):**
-   - **Slicing**: Select action segments and click `✂️ Export Slice Video`.
-   - **Refinement**: Select an exported clip from the "Project Clips" list.
-   - **Apply MLS**: Choose "Spatial Alignment", set "Progressive Fade-out" (e.g., 15 frames) to align the end pose to the start pose.
-   - **Apply RIFE**: Select the MLS-processed version and apply "Temporal Smoothing" for a seamless loop transition.
-
-## 🛠️ Tech Stack
-
-- **Backend**: FastAPI (Python 3.10+)
-- **AI Engine**: MediaPipe Pose & Practical-RIFE (PyTorch)
-- **Frontend**: Vanilla JS SPA + HTML5 Canvas
-- **Video Processing**: OpenCV & FFmpeg
-- **Data**: NumPy (Vector similarity & MLS calculations)
+---
 
 ## 📁 Project Structure
 
 ```text
 SyncPose/
-├── app/                  # Python Backend (FastAPI)
-│   ├── api/              # REST Endpoints (Resources, Slicing, Refinement)
-│   ├── services/         # AI Logic (AlignmentService, PoseService)
-│   └── main.py           # Server Entry Point
-├── static/               # Frontend Assets
-│   ├── js/pages/         # SPA Page Components (RefinementPage, etc.)
-│   └── index.html        # Main Entry UI
-├── download_models.sh    # Model setup script
-├── requirements.txt      # Python dependencies
-└── uploads/              # Project data storage (Videos, Keyframes, Clips)
+├── app/                  # FastAPI Backend
+│   ├── api/              # Refinement, Slicing, Keyframes logic
+│   ├── services/         # Alignment (MLS/RIFE) & Pose logic
+│   └── db/               # Local JSON/NumPy storage
+├── static/               # Vanilla JS SPA
+│   ├── js/pages/         # RefinementPage (Manual Tweak UI)
+│   └── libs/             # Local MediaPipe binaries
+├── download_models.sh    # Auto-downloader for AI models
+└── uploads/              # Project persistence layer
 ```
 
 ## 📜 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-*Created with ❤️ for the Digital Human community.*
+MIT License. Created for the Digital Human community.
