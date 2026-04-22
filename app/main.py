@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.v1 import resources, keyframes, slicing, analysis
+from app.api.v1 import resources, keyframes, slicing, analysis, refinement
 from app.core.config import settings
 
 from fastapi.responses import FileResponse
@@ -21,6 +21,7 @@ app.include_router(resources.router, prefix="/api/v1/resources", tags=["resource
 app.include_router(keyframes.router, prefix="/api/v1/keyframes", tags=["keyframes"])
 app.include_router(slicing.router, prefix="/api/v1/slicing", tags=["slicing"])
 app.include_router(analysis.router, prefix="/api/v1/analysis", tags=["analysis"])
+app.include_router(refinement.router, prefix="/api/v1/refinement", tags=["refinement"])
 
 app.mount("/static", StaticFiles(directory=settings.STATIC_DIR), name="static")
 app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")

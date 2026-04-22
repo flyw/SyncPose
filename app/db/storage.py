@@ -84,6 +84,11 @@ class Storage:
                 # Actual disk paths for backend (OpenCV, etc.)
                 video_path = os.path.join(project_dir, video_filename)
                 thumb_path = os.path.join(project_dir, "thumbnail.jpg")
+                clips_dir = os.path.join(project_dir, "clips")
+                
+                # Ensure clips directory exists
+                if not os.path.exists(clips_dir):
+                    os.makedirs(clips_dir)
 
                 # Web URLs for frontend (mapped via FastAPI mount)
                 video_url = f"/uploads/{project_name}/{video_filename}"
@@ -97,10 +102,13 @@ class Storage:
                     "path": video_path,
                     "url": video_url,
                     "project_dir": project_dir,
+                    "clips_dir": clips_dir,
                     "thumbnail": thumb_path,
                     "thumbnail_url": thumbnail_url,
                     "status": status,
                     "progress": progress,
+                    "refine_status": t_state.get("refine_status", "idle"),
+                    "refine_progress": t_state.get("refine_progress", 0),
                     "fps": fps,
                     "total_frames": total_frames,
                     "pose_cache": pose_cache if disk_status == "completed" else None,
@@ -111,6 +119,53 @@ class Storage:
         
         projects.sort(key=lambda x: x['name'].lower())
         return projects
+
+    def _get_clips_metadata_path(self, clips_dir):
+        return os.path.join(clips_dir, "metadata.json")
+
+    def _load_clips_metadata(self, clips_dir):
+        path = self._get_clips_metadata_path(clips_dir)
+        if os.path.exists(path):
+            try:
+                with open(path, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except: return {}
+        return {}
+
+    def _save_clip_metadata(self, clips_dir, filename, data):
+        meta = self._load_clips_metadata(clips_dir)
+        meta[filename] = data
+        path = self._get_clips_metadata_path(clips_dir)
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump(meta, f, indent=4, ensure_ascii=False)
+
+    def get_project_clips(self, video_id):
+        video = self.get_video(video_id)
+        if not video:
+            return []
+        
+        clips_dir = video["clips_dir"]
+        if not os.path.exists(clips_dir):
+            return []
+            
+        metadata = self._load_clips_metadata(clips_dir)
+        clips = []
+        for filename in os.listdir(clips_dir):
+            if filename.lower().endswith((".mp4", ".avi", ".mov", ".mkv")):
+                path = os.path.join(clips_dir, filename)
+                url = f"/uploads/{video_id}/clips/{filename}"
+                size = os.path.getsize(path)
+                clips.append({
+                    "filename": filename,
+                    "path": path,
+                    "url": url,
+                    "size": size,
+                    "remarks": metadata.get(filename, {}).get("remarks", "")
+                })
+        
+        # Sort clips by creation time (newest first)
+        clips.sort(key=lambda x: os.path.getmtime(x["path"]), reverse=True)
+        return clips
             
     def get_video(self, video_id):
         videos = self.list_videos()

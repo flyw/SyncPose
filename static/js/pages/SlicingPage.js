@@ -73,6 +73,7 @@ export default class SlicingPage {
                                     </div>
 
                                     <button class="btn-success" id="save-active-btn" style="width: 100%; padding: 12px; margin-top:10px;">💾 Save Current Slice</button>
+                                    <button class="btn-primary" id="export-active-btn" style="width: 100%; padding: 12px; margin-top:10px; background: #6366f1;">✂️ Export Slice Video</button>
                                 </div>
                             </div>
                             <div id="no-selection-msg" class="text-muted small" style="text-align:center;">Select a slice to edit or create a new one.</div>
@@ -397,6 +398,40 @@ document.getElementById('end-frame-input').onchange = (e) => {
                 btn.textContent = '❌ Save Failed';
                 setTimeout(() => {
                     btn.textContent = '💾 Save Current Slice';
+                    btn.disabled = false;
+                }, 2000);
+            }
+        };
+
+        document.getElementById('export-active-btn').onclick = async () => {
+            if (this.activeIndex < 0) return;
+            const btn = document.getElementById('export-active-btn');
+            const s = this.slices[this.activeIndex];
+            
+            btn.disabled = true;
+            btn.textContent = 'Exporting...';
+            
+            try {
+                const res = await api.exportSlice(this.videoId, {
+                    start_frame: s.start_frame,
+                    end_frame: s.end_frame,
+                    name: s.name
+                });
+                
+                if (res.url) {
+                    btn.textContent = '✅ Exported';
+                    setTimeout(() => {
+                        btn.textContent = '✂️ Export Slice Video';
+                        btn.disabled = false;
+                    }, 2000);
+                } else {
+                    throw new Error('Export failed');
+                }
+            } catch (e) {
+                console.error(e);
+                btn.textContent = '❌ Export Failed';
+                setTimeout(() => {
+                    btn.textContent = '✂️ Export Slice Video';
                     btn.disabled = false;
                 }, 2000);
             }

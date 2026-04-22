@@ -31,29 +31,57 @@ async def get_slices(video_id: str):
         raise HTTPException(status_code=404, detail="Video not found")
     return video.get("slices", [])
 
-@router.post("/{video_id}/export_slice")
+@router.post("/{video_id}/export")
 async def export_slice(video_id: str, request: Request):
     data = await request.json()
     video = storage.get_video(video_id)
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
     
-    start_frame = data['start_frame']
-    end_frame = data['end_frame']
-    action_name = data['name']
+    start_frame = data.get('start_frame', 0)
+    end_frame = data.get('end_frame', 0)
+    action_name = data.get('name', 'unnamed')
     fps = video['fps']
+    
+    if end_frame <= start_frame:
+        raise HTTPException(status_code=400, detail="End frame must be greater than start frame")
+
+    # Clean filename (Allow Unicode/Chinese, but remove path separators and illegal chars)
+    import re
+    # Remove characters that are illegal in most filesystems: \/:*?"<>|
+    safe_name = re.sub(r'[\x00-\x1f\\/:*?"<>|]', '_', action_name)
+    # Strip leading/trailing dots and spaces
+    safe_name = safe_name.strip('. ')
+    if not safe_name:
+        safe_name = "unnamed"
+        
+    output_filename = f"{safe_name}_{start_frame}_{end_frame}.mp4"
+    output_path = os.path.join(video["clips_dir"], output_filename)
     
     start_time = start_frame / fps
     duration = (end_frame - start_frame) / fps
     
-    output_filename = f"{video_id}_{action_name}.mp4"
-    output_path = os.path.join(settings.CLIPS_DIR, output_filename)
-    
+    # FFmpeg command for Lossless All-Intra extraction (Professional Post-production grade)
     cmd = [
-        "ffmpeg", "-y", "-ss", str(start_time), "-t", str(duration),
-        "-i", video['path'], "-c:v", "libx264", "-c:a", "aac",
-        "-preset", "ultrafast", output_path
+        "ffmpeg", "-y", 
+        "-ss", f"{start_time:.4f}", 
+        "-t", f"{duration:.4f}",
+        "-i", video['path'],
+        "-c:v", "libx264", 
+        "-preset", "veryslow", 
+        "-crf", "0",              # 0 means Lossless
+        "-g", "1",                # Every frame is an Intra-frame (Keyframe)
+        "-bf", "0",               # No B-frames
+        "-c:a", "copy",
+        output_path
     ]
-    subprocess.run(cmd, capture_output=True)
     
-    return {"url": f"/static/clips/{output_filename}"}
+    process = subprocess.run(cmd, capture_output=True, text=True)
+    if process.returncode != 0:
+        print(f"FFmpeg Error: {process.stderr}")
+        raise HTTPException(status_code=500, detail="FFmpeg processing failed")
+    
+    return {
+        "filename": output_filename,
+        "url": f"/uploads/{video_id}/clips/{output_filename}"
+    }

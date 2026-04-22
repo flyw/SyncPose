@@ -109,5 +109,6 @@ async def get_frame_image(video_id: str, idx: int):
     if not ret:
         raise HTTPException(status_code=404, detail="Frame not found")
         
-    _, img_encoded = cv2.imencode('.jpg', frame)
-    return Response(content=img_encoded.tobytes(), media_type="image/jpeg")
+    # Lossless PNG encoding
+    _, img_encoded = cv2.imencode('.png', frame, [cv2.IMWRITE_PNG_COMPRESSION, 0])
+    return Response(content=img_encoded.tobytes(), media_type="image/png")

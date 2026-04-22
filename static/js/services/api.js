@@ -63,7 +63,33 @@ export default {
         return res.json();
     },
     async exportSlice(id, data) {
-        const res = await fetch(`${API_BASE}/slicing/${id}/export_slice`, {
+        const res = await fetch(`${API_BASE}/slicing/${id}/export`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        });
+        return res.json();
+    },
+    async getClips(id) {
+        const res = await fetch(`${API_BASE}/refinement/${id}/clips`);
+        return res.json();
+    },
+    async processRefinement(id, data) {
+        const res = await fetch(`${API_BASE}/refinement/${id}/process`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        });
+        return res.json();
+    },
+    async deleteClip(id, filename) {
+        const res = await fetch(`${API_BASE}/refinement/${id}/clips/${filename}`, {
+            method: 'DELETE'
+        });
+        return res.json();
+    },
+    async previewMls(id, data) {
+        const res = await fetch(`${API_BASE}/refinement/${id}/preview_mls`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(data)
