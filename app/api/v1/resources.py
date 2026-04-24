@@ -7,6 +7,7 @@ import numpy as np
 from app.core.config import settings
 from app.db.storage import storage
 from app.services.pose_service import pose_service
+from app.services.alignment_service import alignment_service
 
 router = APIRouter()
 
@@ -59,6 +60,13 @@ async def get_video(video_id: str):
         raise HTTPException(status_code=404, detail="Video not found")
     return video
 
+@router.delete("/{video_id}")
+async def delete_video(video_id: str):
+    success = storage.delete_video(video_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Video not found")
+    return {"message": "Video project deleted"}
+
 @router.post("/{video_id}/analyze")
 async def analyze_video(video_id: str):
     success = pose_service.start_analysis(video_id)
@@ -93,6 +101,25 @@ async def get_frame_data(video_id: str, idx: int):
         
     return {
         "landmarks": landmarks_data[idx].tolist()
+    }
+
+@router.get("/{video_id}/holistic_frame_data/{idx}")
+async def get_holistic_frame_data(video_id: str, idx: int):
+    video = storage.get_video(video_id)
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+        
+    cap = cv2.VideoCapture(video["path"])
+    cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+    ret, frame = cap.read()
+    cap.release()
+    
+    if not ret:
+        raise HTTPException(status_code=404, detail="Frame not found")
+        
+    lms = alignment_service.get_holistic_landmarks(frame)
+    return {
+        "landmarks": lms.tolist()
     }
 
 @router.get("/{video_id}/frame_image/{idx}")

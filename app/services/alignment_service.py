@@ -10,6 +10,12 @@ from app.core.config import settings
 class AlignmentService:
     def __init__(self):
         # Initialize MediaPipe Tasks Pose Landmarker for backend
+        self.pose_landmarker = None
+        self.holistic_landmarker = None
+        self._init_pose()
+
+    def _init_pose(self):
+        if self.pose_landmarker: return
         base_options = python.BaseOptions(model_asset_path=settings.MODEL_PATH)
         options = vision.PoseLandmarkerOptions(
             base_options=base_options,
@@ -22,14 +28,76 @@ class AlignmentService:
         )
         self.pose_landmarker = vision.PoseLandmarker.create_from_options(options)
 
+    def _init_holistic(self):
+        if self.holistic_landmarker: return
+        holistic_path = os.path.join(os.path.dirname(settings.MODEL_PATH), "holistic_landmarker.task")
+        base_options = python.BaseOptions(model_asset_path=holistic_path)
+        options = vision.HolisticLandmarkerOptions(
+            base_options=base_options,
+            running_mode=vision.RunningMode.IMAGE,
+            min_face_detection_confidence=0.5,
+            min_face_landmarks_confidence=0.5,
+            min_pose_detection_confidence=0.5,
+            min_pose_landmarks_confidence=0.5,
+            min_hand_landmarks_confidence=0.5
+        )
+        self.holistic_landmarker = vision.HolisticLandmarker.create_from_options(options)
+
     def get_landmarks(self, frame):
-        """Extract landmarks from a single frame using MediaPipe Tasks API."""
+        """Extract landmarks from a single frame using MediaPipe Tasks API (33 pts)."""
+        self._init_pose()
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
         results = self.pose_landmarker.detect(mp_image)
         
         if results.pose_landmarks:
             return np.array([[lm.x, lm.y] for lm in results.pose_landmarks[0]])
         return None
+
+    def get_holistic_landmarks(self, frame):
+        """Extract 543 landmarks (Pose, Face, Hands) from a single frame."""
+        self._init_holistic()
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        results = self.holistic_landmarker.detect(mp_image)
+        
+        all_lms = []
+        # Pose (33)
+        if results.pose_landmarks:
+            all_lms.extend([[lm.x, lm.y] for lm in results.pose_landmarks])
+        else:
+            all_lms.extend([[0.0, 0.0]] * 33)
+        
+        # Face (468) - MediaPipe Holistic usually returns 468 face points
+        if results.face_landmarks:
+            all_lms.extend([[lm.x, lm.y] for lm in results.face_landmarks])
+            # Ensure we have exactly 468 or 478 depending on model, but common is 468
+            # If the user expects 543 total: 33 + 468 + 21 + 21 = 543
+            if len(results.face_landmarks) < 468:
+                all_lms.extend([[0.0, 0.0]] * (468 - len(results.face_landmarks)))
+            elif len(results.face_landmarks) > 468:
+                all_lms = all_lms[:33+468] # Truncate to 468
+        else:
+            all_lms.extend([[0.0, 0.0]] * 468)
+            
+        # Left Hand (21)
+        if results.left_hand_landmarks:
+            all_lms.extend([[lm.x, lm.y] for lm in results.left_hand_landmarks])
+        else:
+            all_lms.extend([[0.0, 0.0]] * 21)
+            
+        # Right Hand (21)
+        if results.right_hand_landmarks:
+            all_lms.extend([[lm.x, lm.y] for lm in results.right_hand_landmarks])
+        else:
+            all_lms.extend([[0.0, 0.0]] * 21)
+            
+        # Ensure total is exactly 543
+        if len(all_lms) > 543:
+            all_lms = all_lms[:543]
+        elif len(all_lms) < 543:
+            all_lms.extend([[0.0, 0.0]] * (543 - len(all_lms)))
+
+        print(f"DEBUG: Holistic extracted {len(all_lms)} landmarks")
+        return np.array(all_lms)
 
     def mls_warp_image(self, image, src_pts, dst_pts, alpha=1.0, grid_size=20, draw_grid=False):
         """
@@ -125,8 +193,8 @@ class AlignmentService:
             
         return warped
 
-    async def process_mls(self, video_id, source_path, output_path, params):
-        """Process a video clip with Symmetrical MLS spatial alignment."""
+    async def _process_mls_core(self, video_id, source_path, output_path, params, lm_func):
+        """Generic MLS core that handles different landmark sets."""
         from app.db.storage import storage
         storage.update_video(video_id, {"refine_status": "starting", "refine_progress": 0})
         
@@ -148,19 +216,28 @@ class AlignmentService:
         cap.release()
         
         # 1. Get Landmarks
-        target_lms = None # Global Keyframe or Manual
+        target_lms = None 
         if params.get('manual_target_lms'):
             target_lms = np.array(params['manual_target_lms'])[:, :2]
-            print("Using User-Provided manual landmarks for full clip processing")
         elif video.get("keyframes") and len(video["keyframes"]) > 0:
             try:
-                pose_data = np.load(video["pose_cache"])
-                target_lms = pose_data[video["keyframes"][0]["frame"]][:, :2]
-            except: pass
-        if target_lms is None: target_lms = self.get_landmarks(frames[0])
+                kf = video["keyframes"][0]
+                if lm_func == self.get_landmarks: # Standard 33 pts
+                    pose_data = np.load(video["pose_cache"])
+                    target_lms = pose_data[kf["frame"]][:, :2]
+                else: # Holistic 543 pts
+                    kf_path = os.path.join(os.path.dirname(video["clips_dir"]), "keyframes", f"frame_{kf['frame']}.jpg")
+                    if os.path.exists(kf_path):
+                        kf_img = cv2.imread(kf_path)
+                        target_lms = self.get_holistic_landmarks(kf_img)
+            except Exception as e:
+                print(f"Error loading target lms: {e}")
+                pass
+        
+        if target_lms is None: target_lms = lm_func(frames[0])
             
-        first_lms = self.get_landmarks(frames[0])
-        last_lms = self.get_landmarks(frames[-1])
+        first_lms = lm_func(frames[0])
+        last_lms = lm_func(frames[-1])
         
         if first_lms is None or last_lms is None:
             storage.update_video(video_id, {"refine_status": "idle", "refine_progress": 100})
@@ -169,15 +246,17 @@ class AlignmentService:
         # 2. Parameters
         strategy = params.get('strategy', 'progressive')
         fade_out_frames = int(params.get('fade_out_frames', 15))
-        fade_in_frames = int(params.get('fade_in_frames', 15)) # Default to same as fade out
+        fade_in_frames = int(params.get('fade_in_frames', 15))
         alpha = float(params.get('alpha', 1.0))
         
         # 3. Setup Warp Points with Foot Anchors
         def get_anchored_dst(src, target):
             dst = target.copy() * [width, height]
             s_px = src.copy() * [width, height]
-            # Lock everything from knees (25) down to feet (32)
-            if len(dst) > 25: dst[25:] = s_px[25:] 
+            # Anchor lower body for stability (indices 25-32 in Pose)
+            # Holistic has 543 points, pose is the first 33.
+            if len(dst) >= 33:
+                dst[25:33] = s_px[25:33] 
             return s_px, dst
 
         first_src_px, first_dst_px = get_anchored_dst(first_lms, target_lms)
@@ -185,32 +264,23 @@ class AlignmentService:
 
         output_frames = []
         for i, frame in enumerate(frames):
-            # Yield control back to the event loop to allow progress polling requests to be handled
             await asyncio.sleep(0)
-
             storage.update_video(video_id, {
                 "refine_status": "warping",
                 "refine_progress": int((i + 1) / total_frames * 90)
             })
 
-
-            # Fade In (Start of video)
             if i < fade_in_frames:
                 weight = 1.0 - (i / fade_in_frames)
                 curr_dst = first_src_px * (1 - weight) + first_dst_px * weight
                 warped = self.mls_warp_image(frame, first_src_px, curr_dst, alpha=alpha)
                 output_frames.append(warped)
-            
-            # Fade Out (End of video)
             elif i >= (total_frames - fade_out_frames):
                 dist_from_end = total_frames - 1 - i
-                # weight is 1.0 at last frame, 0.0 at start of window
-                weight = 1.0 - (dist_from_end / (fade_out_frames - 1))
+                weight = 1.0 - (dist_from_end / max(1, fade_out_frames - 1))
                 curr_dst = last_src_px * (1 - weight) + last_dst_px * weight
                 warped = self.mls_warp_image(frame, last_src_px, curr_dst, alpha=alpha)
                 output_frames.append(warped)
-            
-            # Static Middle
             else:
                 output_frames.append(frame)
 
@@ -225,10 +295,11 @@ class AlignmentService:
             "ffmpeg", "-y", "-i", temp_out, "-i", source_path, 
             "-map", "0:v", "-map", "1:a?", 
             "-c:v", "libx264", 
-            "-crf", "0",            # Lossless
+            "-crf", "0", 
             "-preset", "veryslow", 
-            "-g", "1",              # All-Intra (Keyframes only)
-            "-bf", "0",             # No B-frames
+            "-g", "1", 
+            "-bf", "0", 
+            "-pix_fmt", "yuv420p",
             "-c:a", "copy", 
             output_path
         ]
@@ -236,6 +307,14 @@ class AlignmentService:
         if os.path.exists(temp_out): os.remove(temp_out)
         storage.update_video(video_id, {"refine_status": "idle", "refine_progress": 100})
         return True
+
+    async def process_mls(self, video_id, source_path, output_path, params):
+        """Standard 33-point MLS alignment."""
+        return await self._process_mls_core(video_id, source_path, output_path, params, self.get_landmarks)
+
+    async def process_holistic_mls(self, video_id, source_path, output_path, params):
+        """High-precision 543-point Holistic MLS alignment."""
+        return await self._process_mls_core(video_id, source_path, output_path, params, self.get_holistic_landmarks)
 
     async def process_rife(self, video_id, source_path, output_path, params):
         import shutil

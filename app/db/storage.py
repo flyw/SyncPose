@@ -173,6 +173,15 @@ class Storage:
             if v['id'] == video_id:
                 return v
         return None
+    
+    def delete_video(self, video_id):
+        project_dir = os.path.join(settings.UPLOAD_DIR, video_id)
+        if os.path.exists(project_dir):
+            shutil.rmtree(project_dir)
+        
+        if video_id in self._transient_state:
+            del self._transient_state[video_id]
+        return True
         
     def update_video(self, video_id, updates):
         # Update transient state for progress

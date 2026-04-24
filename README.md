@@ -15,9 +15,12 @@ A non-destructive workflow allowing multiple optimization passes. Each "refined"
 
 ### 🧬 MLS Warp (Moving Least Squares)
 Uses thin-plate spline (TPS) and MLS algorithms to spatially deform video frames. This allows the end of a clip to perfectly match the starting "Keyframe" pose, fixing joint misalignments that cause visual pops in loops.
+- **MLS-33**: Standard pose alignment using 33 body landmarks.
+- **Holistic-543**: Ultra-high precision alignment covering face (468 pts), pose (33 pts), and hands (42 pts) for seamless digital human facial expressions and gestures.
 
 ### 🚀 Local AI Engine
 - **MediaPipe Tasks API**: Real-time browser-side calibration.
+- **Holistic Integration**: Native support for 543-point holistic tracking in both UI and backend.
 - **Practical-RIFE**: High-performance frame interpolation for buttery-smooth transitions.
 - **Lossless Extraction**: Frame-level precision with PNG-0 compression to preserve every pixel.
 

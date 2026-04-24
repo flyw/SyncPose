@@ -67,9 +67,29 @@ nav a:hover { color: var(--primary); }
 .control-group { margin-bottom: 20px; background: #0f172a; padding: 15px; border-radius: 8px; border: 1px solid var(--border); }
 .control-group h3 { font-size: 11px; margin: 0 0 12px 0; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; }
 
-.candidate-card { background: #1e293b; border: 1px solid var(--border); border-radius: 6px; padding: 10px; margin-bottom: 10px; cursor: pointer; transition: 0.2s; }
+.candidate-card { background: #1e293b; border: 1px solid var(--border); border-radius: 6px; padding: 10px; margin-bottom: 10px; cursor: pointer; transition: 0.2s; position: relative; }
 .candidate-card:hover { border-color: var(--primary); transform: translateX(4px); }
+.candidate-card.active { border-color: var(--primary); background: rgba(0, 123, 255, 0.1); }
 .candidate-meta { display: flex; justify-content: space-between; font-size: 10px; color: var(--text-muted); margin-top: 5px; }
+
+.btn-icon {
+    padding: 4px;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #0f172a;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 12px;
+    color: var(--text-main);
+    transition: 0.2s;
+}
+.btn-icon:hover {
+    background: var(--primary);
+    border-color: var(--primary);
+}
 
 /* Timeline */
 .timeline-container { height: 60px; background: #020617; border-top: 1px solid var(--border); padding: 0 20px; display: flex; align-items: center; }

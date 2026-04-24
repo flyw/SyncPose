@@ -16,6 +16,12 @@ export default {
         const res = await fetch(`${API_BASE}/resources/${id}`);
         return res.json();
     },
+    async deleteVideo(id) {
+        const res = await fetch(`${API_BASE}/resources/${id}`, {
+            method: 'DELETE'
+        });
+        return res.json();
+    },
     async startAnalysis(id) {
         const res = await fetch(`${API_BASE}/resources/${id}/analyze`, {
             method: 'POST'
@@ -85,6 +91,14 @@ export default {
     async deleteClip(id, filename) {
         const res = await fetch(`${API_BASE}/refinement/${id}/clips/${filename}`, {
             method: 'DELETE'
+        });
+        return res.json();
+    },
+    async updateClipRemarks(id, filename, remarks) {
+        const res = await fetch(`${API_BASE}/refinement/${id}/clips/${filename}/remarks`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({remarks: remarks})
         });
         return res.json();
     },

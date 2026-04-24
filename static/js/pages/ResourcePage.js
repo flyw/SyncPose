@@ -118,9 +118,13 @@ export default class ResourcePage {
                                 <span>👁️</span> Preview
                             </button>
                             
+                            <button class="btn-link danger" onclick="window.deleteProject('${v.id}', '${v.name}')">
+                                <span>🗑️</span> Delete Project
+                            </button>
+
                             ${v.status === 'completed' ? `
-                                <button class="btn-link danger" onclick="window.deletePose('${v.id}')">
-                                    <span>🗑️</span> Delete Pose
+                                <button class="btn-link" style="color: var(--text-muted)" onclick="window.deletePose('${v.id}')">
+                                    <span>🧹</span> Clear Pose Data
                                 </button>
                             ` : ''}
                         </div>
@@ -153,6 +157,13 @@ export default class ResourcePage {
         window.deletePose = async (id) => {
             if (confirm('Are you sure you want to delete the pose data? This cannot be undone.')) {
                 await api.deletePoseData(id);
+                loadVideos();
+            }
+        };
+
+        window.deleteProject = async (id, name) => {
+            if (confirm(`Are you sure you want to delete project "${name}"? ALL data including video, pose, and refined clips will be permanently removed.`)) {
+                await api.deleteVideo(id);
                 loadVideos();
             }
         };
