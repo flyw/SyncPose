@@ -366,8 +366,83 @@ class AlignmentService:
         return await self._process_mls_core(video_id, source_path, output_path, params, self.get_holistic_landmarks)
 
     async def process_rife(self, video_id, source_path, output_path, params):
-        import shutil
-        shutil.copy2(source_path, output_path)
-        return True
+        from app.db.storage import storage
+        from app.services.rife.interpolator import FrameInterpolator
+        
+        storage.update_video(video_id, {"refine_status": "starting rife", "refine_progress": 0})
+        video = storage.get_video(video_id)
+        if not video: return False
+        
+        # 1. Get Reference Frame Path
+        ref_path = None
+        if video.get("keyframes") and len(video["keyframes"]) > 0:
+            kf = video["keyframes"][0]
+            ref_path = os.path.join(os.path.dirname(video["clips_dir"]), "keyframes", f"frame_{kf['frame']}.jpg")
+        
+        # Fallback to first frame of video if no keyframes or file missing
+        temp_ref_path = None
+        if not ref_path or not os.path.exists(ref_path):
+            cap = cv2.VideoCapture(source_path)
+            ret, frame = cap.read()
+            cap.release()
+            if ret:
+                temp_ref_path = os.path.join(video["clips_dir"], f"temp_ref_{video_id}.jpg")
+                cv2.imwrite(temp_ref_path, frame)
+                ref_path = temp_ref_path
+            else:
+                return False
+
+        # 2. Parameters
+        interpolation_factor = int(params.get('interpolation_factor', 4))
+        
+        # 3. Define Callback
+        def status_callback(job_id, progress, message):
+            if progress is not None:
+                storage.update_video(video_id, {
+                    "refine_status": f"RIFE: {message}",
+                    "refine_progress": int(progress)
+                })
+            else:
+                storage.update_video(video_id, {
+                    "refine_status": f"RIFE: {message}"
+                })
+
+        # 4. Run Interpolator
+        try:
+            output_folder = video["clips_dir"]
+            job_id = f"job_{os.urandom(4).hex()}"
+            
+            interpolator = FrameInterpolator(
+                ref_path=ref_path,
+                video_path=source_path,
+                output_folder=output_folder,
+                job_id=job_id,
+                interpolation_factor=interpolation_factor,
+                status_callback=status_callback
+            )
+            
+            # interpolator.run() returns the path to the generated video
+            # result_path will be something like output_folder/flowframe_{job_id}.mp4
+            result_path = await asyncio.to_thread(interpolator.run)
+            
+            # Move result to output_path
+            import shutil
+            if os.path.exists(output_path): os.remove(output_path)
+            shutil.move(result_path, output_path)
+            
+            # Also create HQ version (RIFE output is already high quality H.264)
+            output_hq = output_path.replace(".mp4", "_hq.mp4")
+            shutil.copy2(output_path, output_hq)
+            
+            # Cleanup
+            if temp_ref_path and os.path.exists(temp_ref_path):
+                os.remove(temp_ref_path)
+            
+            return True
+        except Exception as e:
+            print(f"RIFE Error: {e}")
+            return False
+        finally:
+            storage.update_video(video_id, {"refine_status": "idle", "refine_progress": 100})
 
 alignment_service = AlignmentService()

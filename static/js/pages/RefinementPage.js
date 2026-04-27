@@ -343,8 +343,25 @@ export default class RefinementPage {
                     };
                     
                     const alphaSlider = document.getElementById('mls-alpha');
-                    alphaSlider.oninput = (e) => {
-                        document.getElementById('alpha-val').textContent = (e.target.value / 100).toFixed(1);
+                    if (alphaSlider) {
+                        alphaSlider.oninput = (e) => {
+                            document.getElementById('alpha-val').textContent = (e.target.value / 100).toFixed(1);
+                        };
+                    }
+                } else if (method === 'rife') {
+                    previewTools.classList.add('hidden');
+                    container.innerHTML = `
+                        <div class="control-group" style="background: rgba(255,255,255,0.03); padding: 10px; border-radius: 4px; margin-top: 10px;">
+                            <label style="font-size: 11px; margin-bottom: 5px; display: flex; align-items: center; justify-content: space-between; color: var(--text-main);">
+                                <span>Interpolation Factor: <span id="rife-factor-val">4</span>x</span>
+                                <span class="info-icon" title="Number of frames to generate for transitions.&#10;• Higher values = smoother transition but longer processing." style="cursor: help; opacity: 0.6;">ⓘ</span>
+                            </label>
+                            <input type="range" id="rife-factor" min="2" max="32" value="4" style="width: 100%;">
+                        </div>
+                    `;
+                    const factorSlider = document.getElementById('rife-factor');
+                    factorSlider.oninput = (e) => {
+                        document.getElementById('rife-factor-val').textContent = e.target.value;
                     };
                 } else {
                     previewTools.classList.add('hidden');
@@ -531,6 +548,7 @@ export default class RefinementPage {
             const fadeIn = parseInt(document.getElementById('fade-in-frames')?.value || 15);
             const fadeOut = parseInt(document.getElementById('fade-out-frames')?.value || 15);
             const alpha = (document.getElementById('mls-alpha')?.value || 100) / 100;
+            const interpolationFactor = parseInt(document.getElementById('rife-factor')?.value || 4);
 
             const data = {
                 operation: method,
@@ -539,7 +557,8 @@ export default class RefinementPage {
                     strategy: strategy,
                     fade_in_frames: fadeIn,
                     fade_out_frames: fadeOut,
-                    alpha: alpha
+                    alpha: alpha,
+                    interpolation_factor: interpolationFactor
                 }
             };
 

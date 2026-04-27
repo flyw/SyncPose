@@ -24,6 +24,13 @@ Uses advanced mathematical algorithms to spatially deform video frames. This all
 - **MLS Grid Overlay**: Toggleable deformation grid to visualize the spatial warping intensity.
 - **Dual-Layer Opacity**: Independent opacity controls for Keyframe references and Warp previews.
 
+### 🌀 Temporal Smoothing (RIFE)
+Integrates the RIFE (Real-Time Intermediate Flow Estimation) AI model to eliminate velocity "jumps" in motion loops.
+- **AI Interpolation**: Generates smooth transition frames between the video and the anchor pose.
+- **Configurable Smoothing**: Adjustable interpolation factor (up to 32x) for ultra-fluid motion.
+- **English-First Monitoring**: Standardized English status messages for clear cross-platform progress tracking.
+- **Auto-Alignment**: Automatic color and spatial alignment of reference frames before interpolation.
+
 ### 🚀 Dual-Stream Export System
 - **Web-Optimized Preview**: Fast, lightweight H.264 exports for instant browser playback and iteration.
 - **HQ Production Master**: Lossless, all-intra (GOP=1) "All-Keyframe" masters (suffix `_hq.mp4`) for professional post-production grade quality.

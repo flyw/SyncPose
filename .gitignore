@@ -1,4 +1,5 @@
 # AI Models
+static/models/
 *.task
 *.tflite
 *.onnx
