@@ -26,9 +26,12 @@ Uses advanced mathematical algorithms to spatially deform video frames. This all
 
 ### 🌀 Temporal Smoothing (RIFE)
 Integrates the RIFE (Real-Time Intermediate Flow Estimation) AI model to eliminate velocity "jumps" in motion loops.
-- **AI Interpolation**: Generates smooth transition frames between the video and the anchor pose.
-- **Configurable Smoothing**: Adjustable interpolation factor (up to 32x) for ultra-fluid motion.
-- **English-First Monitoring**: Standardized English status messages for clear cross-platform progress tracking.
+- **Three Interpolation Schemes**:
+  - **Front & Back (Seamless)**: Bridges both the start and end of the clip to the reference pose.
+  - **Front Only**: Smooths the transition from the reference pose to the start of the motion.
+  - **Back Only**: Smooths the transition from the end of the motion back to the reference pose.
+- **AI Interpolation**: Generates smooth transition frames with an adjustable factor (up to 32x).
+- **English-First Monitoring**: Standardized English status messages and automatic remarking with scheme/duration.
 - **Auto-Alignment**: Automatic color and spatial alignment of reference frames before interpolation.
 
 ### 🚀 Dual-Stream Export System
