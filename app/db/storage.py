@@ -113,7 +113,8 @@ class Storage:
                     "total_frames": total_frames,
                     "pose_cache": pose_cache if disk_status == "completed" else None,
                     "keyframes": project_data.get("keyframes", []),
-                    "slices": project_data.get("slices", [])
+                    "slices": project_data.get("slices", []),
+                    "analysis_cache": project_data.get("analysis_cache", None)
                 }
                 projects.append(video_info)
         
@@ -191,7 +192,7 @@ class Storage:
 
         # Update persistent project_data.json if needed
         # We only persist metadata like keyframes and slices here
-        persist_fields = ["keyframes", "slices", "fps", "total_frames"]
+        persist_fields = ["keyframes", "slices", "fps", "total_frames", "analysis_cache"]
         if any(f in updates for f in persist_fields):
             project_dir = os.path.join(settings.UPLOAD_DIR, video_id)
             if os.path.exists(project_dir):

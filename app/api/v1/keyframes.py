@@ -35,7 +35,11 @@ async def save_keyframe_image(video_id: str, idx: int):
     keyframes_dir = os.path.join(project_dir, "keyframes")
     os.makedirs(keyframes_dir, exist_ok=True)
     
-    image_path = os.path.join(keyframes_dir, f"frame_{idx}.png")
+    image_path = os.path.join(keyframes_dir, f"frame_{idx}.jpg")
+    
+    # If already cached, just return the path
+    if os.path.exists(image_path):
+        return {"url": f"/{image_path}", "filename": f"frame_{idx}.jpg"}
     
     # Extract frame using OpenCV
     cap = cv2.VideoCapture(video["path"])
@@ -46,10 +50,10 @@ async def save_keyframe_image(video_id: str, idx: int):
     if not ret:
         raise HTTPException(status_code=500, detail="Failed to extract frame")
         
-    # Save as lossless PNG
-    cv2.imwrite(image_path, frame, [cv2.IMWRITE_PNG_COMPRESSION, 0])
+    # Save as high-quality JPG
+    cv2.imwrite(image_path, frame, [cv2.IMWRITE_JPEG_QUALITY, 95])
     
-    return {"url": f"/{image_path}", "filename": f"frame_{idx}.png"}
+    return {"url": f"/{image_path}", "filename": f"frame_{idx}.jpg"}
 
 @router.get("/{video_id}/keyframes")
 async def get_keyframes(video_id: str):

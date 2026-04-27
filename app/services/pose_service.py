@@ -43,15 +43,30 @@ class PoseService:
         total_frames = len(landmarks_data)
         fps = video.get("fps", 30.0)
 
-        # Compute average pose if not provided and not in storage
+        # 1. Try to get cached candidates first
+        if video.get("analysis_cache") and ref_lms is None:
+            cache = video["analysis_cache"]
+            return {
+                "average_pose": cache["average_pose"],
+                "candidates": cache["candidates"],
+                "similar_frames": cache.get("similar_frames", self.find_similar_frames(landmarks_data, np.array(cache["average_pose"]), threshold, fps))
+            }
+
+        # 2. Compute if not cached
         if ref_lms is None:
             ref_lms = self.compute_robust_average_pose(landmarks_data, fps)
         
-        # Calculate candidates
         candidates = self.compute_candidates(landmarks_data, ref_lms, fps)
-        
-        # Calculate similar frames
         similar_frames = self.find_similar_frames(landmarks_data, ref_lms, threshold, fps)
+
+        # Save to video metadata for next time
+        storage.update_video(video_id, {
+            "analysis_cache": {
+                "average_pose": ref_lms.tolist(),
+                "candidates": candidates,
+                "similar_frames": similar_frames
+            }
+        })
         
         return {
             "average_pose": ref_lms.tolist(),

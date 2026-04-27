@@ -1,4 +1,5 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Response, Form
+from fastapi.responses import FileResponse
 import os
 import uuid
 import shutil
@@ -127,6 +128,19 @@ async def get_frame_image(video_id: str, idx: int):
     video = storage.get_video(video_id)
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
+    
+    # Check cache first
+    project_dir = video.get("project_dir")
+    keyframes_dir = os.path.join(project_dir, "keyframes")
+    os.makedirs(keyframes_dir, exist_ok=True)
+    cache_path = os.path.join(keyframes_dir, f"frame_{idx}.jpg")
+    
+    if os.path.exists(cache_path):
+        return FileResponse(
+            cache_path, 
+            media_type="image/jpeg",
+            headers={"Cache-Control": "public, max-age=31536000"}
+        )
         
     cap = cv2.VideoCapture(video["path"])
     cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
@@ -136,6 +150,10 @@ async def get_frame_image(video_id: str, idx: int):
     if not ret:
         raise HTTPException(status_code=404, detail="Frame not found")
         
-    # Lossless PNG encoding
-    _, img_encoded = cv2.imencode('.png', frame, [cv2.IMWRITE_PNG_COMPRESSION, 0])
-    return Response(content=img_encoded.tobytes(), media_type="image/png")
+    # Save to cache as high-quality JPG and return
+    cv2.imwrite(cache_path, frame, [cv2.IMWRITE_JPEG_QUALITY, 95])
+    return FileResponse(
+        cache_path, 
+        media_type="image/jpeg",
+        headers={"Cache-Control": "public, max-age=31536000"}
+    )
