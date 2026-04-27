@@ -102,7 +102,7 @@ SyncPose/
 ├── static/               # Vanilla JS SPA
 │   ├── js/pages/         # RefinementPage (Manual Tweak UI)
 │   └── libs/             # Local MediaPipe binaries
-├── download_models.sh    # Auto-downloader for AI models
+├── download_models.sh    # Unified downloader for MediaPipe & RIFE models
 └── uploads/              # Project persistence layer
 ```
 
