@@ -22,7 +22,7 @@ class FrameInterpolator:
     """
     
     def __init__(self, ref_path, video_path, output_folder, job_id, 
-                 interpolation_factor=2, status_callback=None):
+                 interpolation_factor=2, interpolation_mode='both', status_callback=None):
         """
         Initialize frame interpolator
         
@@ -32,6 +32,7 @@ class FrameInterpolator:
             output_folder: Folder to save output video
             job_id: Unique job identifier
             interpolation_factor: Number of frames to interpolate (2-256)
+            interpolation_mode: 'both', 'front', or 'back'
             status_callback: Callback function for status updates
         """
         self.ref_path = ref_path
@@ -39,6 +40,7 @@ class FrameInterpolator:
         self.output_folder = output_folder
         self.job_id = job_id
         self.interpolation_factor = interpolation_factor
+        self.interpolation_mode = interpolation_mode
         self.status_callback = status_callback
         
         # Validate inputs
@@ -167,7 +169,10 @@ class FrameInterpolator:
     def interpolate_video(self, frames):
         """
         Interpolate video frames using RIFE model
-        Only interpolate: reference -> first frame -> video frames -> last frame -> reference
+        Modes:
+        - 'both': ref -> first frame -> original frames -> last frame -> ref
+        - 'front': ref -> first frame -> original frames
+        - 'back': original frames -> last frame -> ref
         
         Args:
             frames: List of input frames
@@ -191,23 +196,26 @@ class FrameInterpolator:
         self._update_status(20, "Color alignment complete")
         
         interpolated_frames = []
-        
-        # Add the starting reference frame
-        interpolated_frames.append(self.reference_frame.copy())
-        
-        # Step 1: Generate transition from reference frame to first video frame
-        self._update_status(30, "Processing: Standard frame -> First video frame...")
-        # interpolation_factor is the multiplier (e.g., 4x means insert 3 frames)
         num_transition = max(0, self.interpolation_factor - 1)
+        self.added_frames_count = 0
         
-        if num_transition > 0:
-            transition_start = self.generate_transition_frames(
-                self.reference_frame, frames[0], num_transition
-            )
-            interpolated_frames.extend(transition_start)
-        self._update_status(40, "First frame transition complete")
+        # --- PART 1: FRONT TRANSITION ---
+        if self.interpolation_mode in ['both', 'front']:
+            # Add the starting reference frame
+            interpolated_frames.append(self.reference_frame.copy())
+            self.added_frames_count += 1
+            
+            # Generate transition from reference frame to first video frame
+            self._update_status(30, "Processing: Standard frame -> First video frame...")
+            if num_transition > 0:
+                transition_start = self.generate_transition_frames(
+                    self.reference_frame, frames[0], num_transition
+                )
+                interpolated_frames.extend(transition_start)
+                self.added_frames_count += len(transition_start)
+            self._update_status(40, "First frame transition complete")
         
-        # Step 2: Add all original video frames (NO interpolation in middle)
+        # --- PART 2: ORIGINAL VIDEO FRAMES ---
         self._update_status(50, "Adding original video frames...")
         for i, frame in enumerate(frames):
             interpolated_frames.append(frame.copy())
@@ -216,17 +224,20 @@ class FrameInterpolator:
                 progress = 50 + (i / len(frames) * 30)
                 self._update_status(progress, f"Adding frame: {i}/{len(frames)}")
         
-        # Step 3: Generate transition from last video frame back to reference frame
-        self._update_status(80, "Processing: Last video frame -> Standard frame...")
-        if num_transition > 0:
-            transition_end = self.generate_transition_frames(
-                frames[-1], self.reference_frame, num_transition
-            )
-            interpolated_frames.extend(transition_end)
-        
-        # Add the ending reference frame
-        interpolated_frames.append(self.reference_frame.copy())
-        self._update_status(90, "Last frame transition complete")
+        # --- PART 3: BACK TRANSITION ---
+        if self.interpolation_mode in ['both', 'back']:
+            self._update_status(80, "Processing: Last video frame -> Standard frame...")
+            if num_transition > 0:
+                transition_end = self.generate_transition_frames(
+                    frames[-1], self.reference_frame, num_transition
+                )
+                interpolated_frames.extend(transition_end)
+                self.added_frames_count += len(transition_end)
+            
+            # Add the ending reference frame
+            interpolated_frames.append(self.reference_frame.copy())
+            self.added_frames_count += 1
+            self._update_status(90, "Last frame transition complete")
         
         return interpolated_frames
     

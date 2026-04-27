@@ -371,7 +371,7 @@ class AlignmentService:
         
         storage.update_video(video_id, {"refine_status": "starting rife", "refine_progress": 0})
         video = storage.get_video(video_id)
-        if not video: return False
+        if not video: return {"success": False}
         
         # 1. Get Reference Frame Path
         ref_path = None
@@ -390,10 +390,11 @@ class AlignmentService:
                 cv2.imwrite(temp_ref_path, frame)
                 ref_path = temp_ref_path
             else:
-                return False
+                return {"success": False}
 
         # 2. Parameters
         interpolation_factor = int(params.get('interpolation_factor', 4))
+        interpolation_mode = params.get('interpolation_mode', 'both')
         
         # 3. Define Callback
         def status_callback(job_id, progress, message):
@@ -418,19 +419,20 @@ class AlignmentService:
                 output_folder=output_folder,
                 job_id=job_id,
                 interpolation_factor=interpolation_factor,
+                interpolation_mode=interpolation_mode,
                 status_callback=status_callback
             )
             
             # interpolator.run() returns the path to the generated video
-            # result_path will be something like output_folder/flowframe_{job_id}.mp4
             result_path = await asyncio.to_thread(interpolator.run)
+            added_frames = getattr(interpolator, 'added_frames_count', 0)
             
             # Move result to output_path
             import shutil
             if os.path.exists(output_path): os.remove(output_path)
             shutil.move(result_path, output_path)
             
-            # Also create HQ version (RIFE output is already high quality H.264)
+            # Also create HQ version
             output_hq = output_path.replace(".mp4", "_hq.mp4")
             shutil.copy2(output_path, output_hq)
             
@@ -438,10 +440,10 @@ class AlignmentService:
             if temp_ref_path and os.path.exists(temp_ref_path):
                 os.remove(temp_ref_path)
             
-            return True
+            return {"success": True, "added_frames": added_frames, "mode": interpolation_mode}
         except Exception as e:
             print(f"RIFE Error: {e}")
-            return False
+            return {"success": False, "error": str(e)}
         finally:
             storage.update_video(video_id, {"refine_status": "idle", "refine_progress": 100})
 

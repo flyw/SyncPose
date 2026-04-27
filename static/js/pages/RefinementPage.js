@@ -351,18 +351,64 @@ export default class RefinementPage {
                 } else if (method === 'rife') {
                     previewTools.classList.add('hidden');
                     container.innerHTML = `
-                        <div class="control-group" style="background: rgba(255,255,255,0.03); padding: 10px; border-radius: 4px; margin-top: 10px;">
-                            <label style="font-size: 11px; margin-bottom: 5px; display: flex; align-items: center; justify-content: space-between; color: var(--text-main);">
-                                <span>Interpolation Factor: <span id="rife-factor-val">4</span>x</span>
-                                <span class="info-icon" title="Number of frames to generate for transitions.&#10;• Higher values = smoother transition but longer processing." style="cursor: help; opacity: 0.6;">ⓘ</span>
+                        <div class="control-group" style="background: rgba(255,255,255,0.03); padding: 12px; border-radius: 8px; margin-top: 10px; border: 1px solid rgba(255,255,255,0.05);">
+                            <label style="font-size: 11px; margin-bottom: 10px; display: block; color: var(--text-dim);">Interpolation Scheme</label>
+                            <div class="mode-selector" style="display: flex; gap: 4px; background: #0f172a; padding: 4px; border-radius: 6px; margin-bottom: 15px;">
+                                <button class="mode-btn active" data-mode="both" style="flex: 1; font-size: 10px; padding: 6px 2px; border: none; border-radius: 4px; cursor: pointer; transition: all 0.2s;">Both</button>
+                                <button class="mode-btn" data-mode="front" style="flex: 1; font-size: 10px; padding: 6px 2px; border: none; border-radius: 4px; cursor: pointer; transition: all 0.2s;">Front</button>
+                                <button class="mode-btn" data-mode="back" style="flex: 1; font-size: 10px; padding: 6px 2px; border: none; border-radius: 4px; cursor: pointer; transition: all 0.2s;">Back</button>
+                            </div>
+                            <input type="hidden" id="rife-mode" value="both">
+                            
+                            <label style="font-size: 11px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; color: var(--text-dim); border-top: 1px solid rgba(255,255,255,0.05); padding-top: 12px;">
+                                <span>Interpolation Factor: <span id="rife-factor-val" style="color: var(--primary); font-weight: bold;">4</span>x</span>
+                                <span class="info-icon" title="Number of frames to generate for transitions." style="cursor: help; opacity: 0.6;">ⓘ</span>
                             </label>
-                            <input type="range" id="rife-factor" min="2" max="32" value="4" style="width: 100%;">
+                            <input type="range" id="rife-factor" min="2" max="32" value="4" style="width: 100%; accent-color: var(--primary);">
+                            
+                            <p id="mode-desc" style="font-size: 10px; color: var(--text-dim); margin-top: 12px; line-height: 1.4; opacity: 0.8; font-style: italic;">Seamless loop: Interpolates both Start and End transitions.</p>
                         </div>
                     `;
                     const factorSlider = document.getElementById('rife-factor');
                     factorSlider.oninput = (e) => {
                         document.getElementById('rife-factor-val').textContent = e.target.value;
                     };
+
+                    const modeBtns = container.querySelectorAll('.mode-btn');
+                    const modeInput = container.querySelector('#rife-mode');
+                    const modeDesc = container.querySelector('#mode-desc');
+                    const descs = {
+                        'both': 'Seamless loop: Interpolates both Start and End transitions.',
+                        'front': 'Start only: Interpolates from Reference frame to Video start.',
+                        'back': 'End only: Interpolates from Video end back to Reference frame.'
+                    };
+
+                    modeBtns.forEach(btn => {
+                        const updateStyles = () => {
+                            modeBtns.forEach(b => {
+                                const isActive = b === btn;
+                                b.style.background = isActive ? 'var(--primary)' : 'transparent';
+                                b.style.color = isActive ? 'white' : 'var(--text-dim)';
+                                if (isActive) b.classList.add('active');
+                                else b.classList.remove('active');
+                            });
+                        };
+
+                        btn.onclick = () => {
+                            updateStyles();
+                            modeInput.value = btn.dataset.mode;
+                            modeDesc.textContent = descs[btn.dataset.mode];
+                        };
+
+                        // Initial style
+                        if (btn.dataset.mode === 'both') {
+                            btn.style.background = 'var(--primary)';
+                            btn.style.color = 'white';
+                        } else {
+                            btn.style.background = 'transparent';
+                            btn.style.color = 'var(--text-dim)';
+                        }
+                    });
                 } else {
                     previewTools.classList.add('hidden');
                     container.innerHTML = '';
@@ -549,6 +595,7 @@ export default class RefinementPage {
             const fadeOut = parseInt(document.getElementById('fade-out-frames')?.value || 15);
             const alpha = (document.getElementById('mls-alpha')?.value || 100) / 100;
             const interpolationFactor = parseInt(document.getElementById('rife-factor')?.value || 4);
+            const interpolationMode = document.getElementById('rife-mode')?.value || 'both';
 
             const data = {
                 operation: method,
@@ -558,7 +605,8 @@ export default class RefinementPage {
                     fade_in_frames: fadeIn,
                     fade_out_frames: fadeOut,
                     alpha: alpha,
-                    interpolation_factor: interpolationFactor
+                    interpolation_factor: interpolationFactor,
+                    interpolation_mode: interpolationMode
                 }
             };
 

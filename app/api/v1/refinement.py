@@ -12,17 +12,27 @@ router = APIRouter()
 
 async def run_refinement_task(video_id, operation, source_path, output_path, params, remarks, clips_dir, output_filename):
     try:
+        rife_data = None
         if operation == 'mls':
             success = await alignment_service.process_mls(video_id, source_path, output_path, params)
         elif operation == 'holistic':
             success = await alignment_service.process_holistic_mls(video_id, source_path, output_path, params)
         elif operation == 'rife':
-            success = await alignment_service.process_rife(video_id, source_path, output_path, params)
+            result = await alignment_service.process_rife(video_id, source_path, output_path, params)
+            success = result.get("success", False)
+            if success:
+                rife_data = result
         else:
             success = False
         
         if success:
-            storage._save_clip_metadata(clips_dir, output_filename, {"remarks": remarks})
+            if operation == 'rife' and rife_data:
+                mode_map = {'both': 'Front & Back', 'front': 'Front Only', 'back': 'Back Only'}
+                display_mode = mode_map.get(rife_data.get('mode'), rife_data.get('mode'))
+                final_remarks = f"RIFE ({display_mode}, +{rife_data.get('added_frames')}f)"
+                storage._save_clip_metadata(clips_dir, output_filename, {"remarks": final_remarks})
+            else:
+                storage._save_clip_metadata(clips_dir, output_filename, {"remarks": remarks})
     except Exception as e:
         print(f"Background Task Error: {e}")
     finally:
