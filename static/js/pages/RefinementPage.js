@@ -49,8 +49,8 @@ export default class RefinementPage {
                             <p style="max-width: 300px; margin: 0 auto; line-height: 1.4; font-size: 13px;">Click on a version in the left sidebar.</p>
                         </div>
                         <video id="video-player" class="hidden" style="max-width: 100%; max-height: 100%; z-index: 1;"></video>
-                        <img id="warp-preview-image" class="hidden" style="position: absolute; pointer-events: auto; z-index: 3; object-fit: contain; cursor: pointer;">
-                        <img id="keyframe-photo" class="hidden" style="position: absolute; pointer-events: none; z-index: 4; object-fit: contain; opacity: 0.5;">
+                        <img id="warp-preview-image" class="hidden" style="position: absolute; pointer-events: auto; z-index: 4; object-fit: contain; cursor: pointer;">
+                        <img id="keyframe-photo" class="hidden" style="position: absolute; pointer-events: none; z-index: 3; object-fit: contain; opacity: 0.5;">
                         <canvas id="landmark-overlay" class="hidden" style="position: absolute; pointer-events: none; z-index: 5; cursor: default;"></canvas>
                     </div>
                 </div>
@@ -71,14 +71,15 @@ export default class RefinementPage {
                                 <div id="mini-timeline" style="width: 100%; height: 6px; background: #334155; border-radius: 3px; position: relative; cursor: pointer; margin-bottom: 15px;">
                                     <div id="mini-playhead" style="position: absolute; top: -4px; left: 0%; width: 14px; height: 14px; background: var(--primary); border: 2px solid white; border-radius: 50%; transform: translateX(-50%); pointer-events: none;"></div>
                                 </div>
-                                <div style="display: flex; gap: 8px; justify-content: center;">
-                                    <button id="ref-prev-frame" class="btn-outline" style="padding: 6px 12px;">❮</button>
-                                    <button id="ref-play-btn" class="btn-primary" style="flex: 1; padding: 6px 12px;">▶ Play</button>
-                                    <button id="ref-next-frame" class="btn-outline" style="padding: 6px 12px;">❯</button>
-                                </div>
-                            </div>
-                            <div style="display: flex; gap: 10px; margin-bottom: 15px;">
-                                <button id="loop-toggle" class="btn-outline" style="flex: 1; padding: 6px; font-size: 11px;">🔄 Loop: Off</button>
+                                <div style="display: flex; gap: 8px; justify-content: center; margin-bottom: 15px;">
+                                        <button id="ref-prev-frame" class="btn-outline" style="padding: 6px 12px;">❮</button>
+                                        <button id="ref-play-btn" class="btn-primary" style="flex: 1; padding: 6px 12px;">▶ Play</button>
+                                        <button id="ref-next-frame" class="btn-outline" style="padding: 6px 12px;">❯</button>
+                                    </div>
+                                    <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                                        <button id="loop-toggle" class="btn-outline" style="flex: 1; padding: 6px; font-size: 11px;">🔄 Loop: Off</button>
+                                        <button id="skeleton-toggle" class="btn-primary" style="flex: 1; padding: 6px; font-size: 11px;">🔘 Skeleton: On</button>
+                                    </div>
                             </div>
                             <label>Reference Opacity: <span id="opacity-val">50%</span></label>
                             <input type="range" id="keyframe-opacity" min="0" max="100" value="50" style="width: 100%;">
@@ -92,6 +93,21 @@ export default class RefinementPage {
                             </select>
                         </div>
                         <div id="method-params-container"></div>
+                        
+                        <div id="preview-tools" class="control-group hidden" style="margin-top: 20px; border-top: 1px solid var(--border); padding-top: 20px;">
+                            <h3>Visualization</h3>
+                            <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+                                <button id="preview-warp-btn" class="btn-primary" style="flex: 1; font-size: 11px; padding: 8px;">👁️ Preview Warp</button>
+                                <button id="toggle-warp-layer" class="btn-outline" style="flex: 1; font-size: 11px; padding: 8px;">Layer: On</button>
+                            </div>
+                            <label>Warp Layer Opacity: <span id="warp-opacity-val">100%</span></label>
+                            <input type="range" id="warp-layer-opacity" min="0" max="100" value="100" style="width: 100%;">
+                            <label style="margin-top: 10px; display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;">
+                                <input type="checkbox" id="show-grid-toggle" style="width: 14px; height: 14px; margin: 0; cursor: pointer;">
+                                <span style="font-size: 11px; color: var(--text-muted);">Show MLS Grid</span>
+                            </label>
+                        </div>
+
                         <div style="margin-top: 30px;">
                             <div id="process-status" style="font-size: 11px; color: var(--primary); margin-bottom: 10px; min-height: 14px; font-weight: 600;"></div>
                             <div id="progress-container" class="hidden" style="width: 100%; height: 4px; background: #0f172a; border-radius: 2px; margin-bottom: 15px; overflow: hidden;">
@@ -155,7 +171,8 @@ export default class RefinementPage {
                     const grid = document.getElementById('base-clip-grid');
                     if (grid) {
                         grid.innerHTML = baseNamesOrder.map(baseName => {
-                            const variantsCount = groups[baseName].length - 1;
+                            // Filter out _hq from count
+                            const variantsCount = groups[baseName].filter(c => !c.filename.includes('_hq.mp4')).length - 1;
                             return `
                                 <div class="project-card" style="cursor: pointer; padding: 15px;" onclick="window.enterClipDetail('${baseName}')">
                                     <div style="font-size: 48px; margin-bottom: 10px; text-align: center; background: #020617; border-radius: 8px; padding: 20px;">🎬</div>
@@ -170,19 +187,27 @@ export default class RefinementPage {
                     }
                 } else {
                     const list = document.getElementById('clip-list');
-                    const groupClips = groups[this.selectedBaseClip] || [];
+                    // Filter out high-quality masters from the visible list
+                    const groupClips = (groups[this.selectedBaseClip] || []).filter(c => !c.filename.includes('_hq.mp4'));
                     groupClips.sort((a,b) => a.filename === (this.selectedBaseClip + '.mp4') ? -1 : b.filename === (this.selectedBaseClip + '.mp4') ? 1 : 0);
+                    
                     if (list) {
                         list.innerHTML = groupClips.map(clip => {
                             const isSelected = this.selectedClip === clip.filename;
                             let displayName = clip.filename === (this.selectedBaseClip + '.mp4') ? '⭐ Original Slice' : '└── ' + clip.filename.replace(this.selectedBaseClip, '').replace(/^[_]+/, '').replace(/\.mp4$/, '');
+                            
+                            // Check if an HQ version exists in the original groups array
+                            const hasHq = (groups[this.selectedBaseClip] || []).some(c => c.filename === clip.filename.replace('.mp4', '_hq.mp4'));
+                            const downloadUrl = hasHq ? clip.url.replace('.mp4', '_hq.mp4') : clip.url;
+                            const downloadLabel = hasHq ? 'Download (HQ Master)' : 'Download';
+
                             return `
                                 <div class="candidate-card ${isSelected ? 'active' : ''}" style="padding: 8px 10px; margin-bottom: 4px; position: relative; cursor: pointer;" onclick="window.selectRefineClip('${clip.filename}', '${clip.url}')">
                                     <div style="font-size: 12px; color: ${isSelected ? 'var(--primary)' : 'var(--text-main)'}; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 85px;">${displayName}</div>
                                     ${clip.remarks ? `<div style="font-size: 10px; color: var(--primary); background: rgba(99,102,241,0.05); padding: 2px 4px; border-radius: 2px; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${clip.remarks}</div>` : ''}
                                     <div style="position: absolute; top: 7px; right: 6px; display: flex; gap: 4px;">
                                         <button class="btn-icon" onclick="window.editRemark(event, '${clip.filename}', '${clip.remarks || ''}')" title="Edit Remark">📝</button>
-                                        <button class="btn-icon" onclick="window.downloadClip(event, '${clip.url}', '${clip.filename}')" title="Download">📥</button>
+                                        <button class="btn-icon" onclick="window.downloadClip(event, '${downloadUrl}', '${clip.filename}')" title="${downloadLabel}">${hasHq ? '💎' : '📥'}</button>
                                         <button class="btn-icon" onclick="window.deleteRefineClip(event, '${clip.filename}')" title="Delete">✕</button>
                                     </div>
                                 </div>
@@ -275,6 +300,125 @@ export default class RefinementPage {
                 });
             };
 
+            const updateMethodParams = () => {
+                const method = this.refineMethod.value;
+                const container = document.getElementById('method-params-container');
+                const previewTools = document.getElementById('preview-tools');
+                
+                if (method === 'mls' || method === 'holistic') {
+                    previewTools.classList.remove('hidden');
+                    container.innerHTML = `
+                        <div class="control-group" style="background: rgba(255,255,255,0.03); padding: 10px; border-radius: 4px; margin-top: 10px;">
+                            <label style="font-size: 11px; margin-bottom: 5px; display: block; color: var(--text-main);">Warp Strategy</label>
+                            <select id="mls-strategy" style="width: 100%; background: #0f172a; color: white; border: 1px solid var(--border); padding: 5px; font-size: 12px; margin-bottom: 10px;">
+                                <option value="progressive">Progressive (Fade In/Out)</option>
+                                <option value="global">Global (Whole Video)</option>
+                            </select>
+                            
+                            <div id="progressive-params">
+                                <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                                    <div style="flex: 1;">
+                                        <label style="font-size: 10px; opacity: 0.7; color: var(--text-main);">Fade In (Frames)</label>
+                                        <input type="number" id="fade-in-frames" value="15" min="0" style="width: 100%; background: #0f172a; color: white; border: 1px solid var(--border); padding: 4px; font-size: 12px;">
+                                    </div>
+                                    <div style="flex: 1;">
+                                        <label style="font-size: 10px; opacity: 0.7; color: var(--text-main);">Fade Out (Frames)</label>
+                                        <input type="number" id="fade-out-frames" value="15" min="0" style="width: 100%; background: #0f172a; color: white; border: 1px solid var(--border); padding: 4px; font-size: 12px;">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <label style="font-size: 11px; margin-bottom: 5px; display: flex; align-items: center; justify-content: space-between; color: var(--text-main);">
+                                <span>Warp Strength (Alpha): <span id="alpha-val">1.0</span></span>
+                                <span class="info-icon" title="Control the 'hardness' of the warp.&#10;• 1.0: Precise & strict following of points.&#10;• < 1.0: Softer, more natural deformation.&#10;• > 1.0: Very localized distortion." style="cursor: help; opacity: 0.6;">ⓘ</span>
+                            </label>
+                            <input type="range" id="mls-alpha" min="0" max="300" value="100" style="width: 100%;">
+                        </div>
+                    `;
+                    
+                    const strategySelect = document.getElementById('mls-strategy');
+                    const progParams = document.getElementById('progressive-params');
+                    strategySelect.onchange = () => {
+                        progParams.style.display = strategySelect.value === 'progressive' ? 'block' : 'none';
+                    };
+                    
+                    const alphaSlider = document.getElementById('mls-alpha');
+                    alphaSlider.oninput = (e) => {
+                        document.getElementById('alpha-val').textContent = (e.target.value / 100).toFixed(1);
+                    };
+                } else {
+                    previewTools.classList.add('hidden');
+                    container.innerHTML = '';
+                    if (this.warpPreviewImage) this.warpPreviewImage.classList.add('hidden');
+                }
+            };
+
+            this.refineMethod.onchange = updateMethodParams;
+            updateMethodParams();
+
+            // Visualization Tools Binding
+            const previewWarpBtn = document.getElementById('preview-warp-btn');
+            const warpLayerOpacity = document.getElementById('warp-layer-opacity');
+            const toggleWarpLayer = document.getElementById('toggle-warp-layer');
+            const showGridToggle = document.getElementById('show-grid-toggle');
+            this.warpPreviewImage = document.getElementById('warp-preview-image');
+            this.isWarpLayerVisible = true;
+
+            previewWarpBtn.onclick = async () => {
+                if (!this.selectedClip) return alert("Select a clip first");
+                previewWarpBtn.disabled = true;
+                previewWarpBtn.textContent = '⏳ ...';
+                
+                try {
+                    const strategy = document.getElementById('mls-strategy')?.value || 'progressive';
+                    const fadeIn = parseInt(document.getElementById('fade-in-frames')?.value || 15);
+                    const fadeOut = parseInt(document.getElementById('fade-out-frames')?.value || 15);
+                    const alpha = (document.getElementById('mls-alpha')?.value || 100) / 100;
+                    const showGrid = showGridToggle.checked;
+                    
+                    const res = await api.previewMls(this.videoId, {
+                        source_filename: this.selectedClip,
+                        frame_index: Math.round(this.videoPlayer.currentTime * this.fps),
+                        method: this.refineMethod.value,
+                        params: {
+                            alpha: alpha,
+                            show_grid: showGrid,
+                            strategy: strategy,
+                            fade_in_frames: fadeIn,
+                            fade_out_frames: fadeOut
+                        }
+                    });
+                    
+                    if (res.url) {
+                        this.warpPreviewImage.src = res.url;
+                        this.warpPreviewImage.classList.remove('hidden');
+                        this.isWarpLayerVisible = true;
+                        toggleWarpLayer.textContent = 'Layer: On';
+                        toggleWarpLayer.classList.add('btn-primary');
+                        toggleWarpLayer.classList.remove('btn-outline');
+                    }
+                } catch (e) {
+                    alert("Preview failed: " + e.message);
+                } finally {
+                    previewWarpBtn.disabled = false;
+                    previewWarpBtn.textContent = '👁️ Preview Warp';
+                }
+            };
+
+            toggleWarpLayer.onclick = () => {
+                this.isWarpLayerVisible = !this.isWarpLayerVisible;
+                this.warpPreviewImage.classList.toggle('hidden', !this.isWarpLayerVisible);
+                toggleWarpLayer.textContent = `Layer: ${this.isWarpLayerVisible ? 'On' : 'Off'}`;
+                toggleWarpLayer.classList.toggle('btn-primary', this.isWarpLayerVisible);
+                toggleWarpLayer.classList.toggle('btn-outline', !this.isWarpLayerVisible);
+            };
+
+            warpLayerOpacity.oninput = (e) => {
+                const val = e.target.value;
+                document.getElementById('warp-opacity-val').textContent = val + '%';
+                this.warpPreviewImage.style.opacity = val / 100;
+            };
+
             const renderLoop = () => {
                 if (!this.running || !this.videoPlayer) return;
                 const v = this.videoPlayer;
@@ -285,7 +429,9 @@ export default class RefinementPage {
                     const vRect = v.getBoundingClientRect();
                     const cRect = document.getElementById('preview-container').getBoundingClientRect();
                     const style = { width: v.clientWidth+'px', height: v.clientHeight+'px', left: (vRect.left-cRect.left)+'px', top: (vRect.top-cRect.top)+'px' };
-                    Object.assign(this.canvas.style, style); Object.assign(this.keyframePhoto.style, style);
+                    Object.assign(this.canvas.style, style); 
+                    Object.assign(this.keyframePhoto.style, style);
+                    Object.assign(this.warpPreviewImage.style, style);
                     if (this.canvas.width !== v.videoWidth) { this.canvas.width = v.videoWidth; this.canvas.height = v.videoHeight; }
                 }
                 this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
@@ -294,11 +440,6 @@ export default class RefinementPage {
                     if (this.currentFrameLandmarks) drawPose(this.currentFrameLandmarks, '#22c55e', 6);
                 }
                 requestAnimationFrame(renderLoop);
-            };
-
-            this.refineMethod.onchange = () => {
-                const method = this.refineMethod.value;
-                document.getElementById('method-params-container').innerHTML = method === 'mls' ? `<button id="preview-warp-btn" class="btn-outline" style="width:100%">👁️ Preview Warp</button>` : '';
             };
 
             this.playBtn.onclick = () => {
@@ -325,6 +466,14 @@ export default class RefinementPage {
                 loopBtn.classList.toggle('btn-outline', !this.isLooping);
             };
 
+            const skelBtn = document.getElementById('skeleton-toggle');
+            skelBtn.onclick = () => {
+                this.showSkeleton = !this.showSkeleton;
+                skelBtn.textContent = `🔘 Skeleton: ${this.showSkeleton ? 'On' : 'Off'}`;
+                skelBtn.classList.toggle('btn-primary', this.showSkeleton);
+                skelBtn.classList.toggle('btn-outline', !this.showSkeleton);
+            };
+
             document.getElementById('ref-prev-frame').onclick = () => {
                 this.videoPlayer.pause();
                 this.videoPlayer.currentTime = Math.max(0, this.videoPlayer.currentTime - 1/this.fps);
@@ -344,7 +493,9 @@ export default class RefinementPage {
             };
             
             this.opacitySlider.oninput = (e) => { 
-                this.keyframeOpacity = e.target.value / 100; 
+                const val = e.target.value;
+                document.getElementById('opacity-val').textContent = val + '%';
+                this.keyframeOpacity = val / 100; 
                 this.keyframePhoto.style.opacity = this.keyframeOpacity; 
             };
 
@@ -376,11 +527,19 @@ export default class RefinementPage {
         progressBar.style.width = '0%';
 
         try {
+            const strategy = document.getElementById('mls-strategy')?.value || 'progressive';
+            const fadeIn = parseInt(document.getElementById('fade-in-frames')?.value || 15);
+            const fadeOut = parseInt(document.getElementById('fade-out-frames')?.value || 15);
+            const alpha = (document.getElementById('mls-alpha')?.value || 100) / 100;
+
             const data = {
                 operation: method,
                 source_filename: this.selectedClip,
                 params: {
-                    strategy: 'prog'
+                    strategy: strategy,
+                    fade_in_frames: fadeIn,
+                    fade_out_frames: fadeOut,
+                    alpha: alpha
                 }
             };
 
@@ -395,19 +554,31 @@ export default class RefinementPage {
 
             const res = await api.processRefinement(this.videoId, data);
             
-            // Polling progress if needed, but for now assuming direct response or handled by service
-            if (res.filename) {
-                status.textContent = '✅ Optimization Complete!';
-                progressBar.style.width = '100%';
-                setTimeout(() => {
-                    progressContainer.classList.add('hidden');
-                    btn.disabled = false;
-                    btn.textContent = '🚀 Process & Save As New';
-                    // Refresh clip list
-                    window.location.reload();
-                }, 1500);
+            if (res.status === 'started') {
+                // Polling Loop
+                const pollProgress = async () => {
+                    const video = await api.getVideo(this.videoId);
+                    const progress = video.refine_progress || 0;
+                    const refineStatus = video.refine_status || 'idle';
+                    
+                    progressBar.style.width = `${progress}%`;
+                    status.textContent = `⏳ Processing: ${progress}% (${refineStatus})`;
+                    
+                    if (refineStatus === 'idle' && progress === 100) {
+                        status.textContent = '✅ Optimization Complete!';
+                        setTimeout(() => {
+                            progressContainer.classList.add('hidden');
+                            btn.disabled = false;
+                            btn.textContent = '🚀 Process & Save As New';
+                            window.location.reload();
+                        }, 1500);
+                    } else {
+                        setTimeout(pollProgress, 500);
+                    }
+                };
+                pollProgress();
             } else {
-                throw new Error(res.error || 'Failed to process');
+                throw new Error(res.error || 'Failed to start process');
             }
         } catch (e) {
             status.textContent = '❌ Error: ' + e.message;

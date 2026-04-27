@@ -13,30 +13,35 @@
 ### 🔄 Iterative Refinement Pipeline
 A non-destructive workflow allowing multiple optimization passes. Each "refined" clip can be used as the input for the next stage, enabling a "Slicing -> MLS Warp -> RIFE Smoothing" iterative chain.
 
-### 🧬 MLS Warp (Moving Least Squares)
-Uses thin-plate spline (TPS) and MLS algorithms to spatially deform video frames. This allows the end of a clip to perfectly match the starting "Keyframe" pose, fixing joint misalignments that cause visual pops in loops.
-- **MLS-33**: Standard pose alignment using 33 body landmarks.
-- **Holistic-543**: Ultra-high precision alignment covering face (468 pts), pose (33 pts), and hands (42 pts) for seamless digital human facial expressions and gestures.
+### 🧬 Enhanced MLS Warp (Moving Least Squares)
+Uses advanced mathematical algorithms to spatially deform video frames. This allows motion segments to perfectly match a global "Keyframe" pose.
+- **Progressive Mode**: Configurable fade-in/out windows for surgical transition control.
+- **Global Bridge Mode**: Smooth linear interpolation across the entire video. Anchors both start and end frames to the target pose for perfect seamless loops.
+- **Rigid Hand Stabilization**: Specialized logic for Holistic-543 that treats hands as rigid bodies. Prevents "spaghetti" distortions while maintaining pixel-perfect facial and pose alignment.
 
-### 🚀 Local AI Engine
-- **MediaPipe Tasks API**: Real-time browser-side calibration.
-- **Holistic Integration**: Native support for 543-point holistic tracking in both UI and backend.
-- **Practical-RIFE**: High-performance frame interpolation for buttery-smooth transitions.
-- **Lossless Extraction**: Frame-level precision with PNG-0 compression to preserve every pixel.
+### 👁️ Pro Visualization Tools
+- **Live Warp Preview**: Instantly generate and overlay a warped frame to compare against target poses.
+- **MLS Grid Overlay**: Toggleable deformation grid to visualize the spatial warping intensity.
+- **Dual-Layer Opacity**: Independent opacity controls for Keyframe references and Warp previews.
 
-### ⚡ Pro Slicing Editor
-Frame-accurate timeline with "Pin current frame" functionality and instant slice exporting for rapid iteration.
+### 🚀 Dual-Stream Export System
+- **Web-Optimized Preview**: Fast, lightweight H.264 exports for instant browser playback and iteration.
+- **HQ Production Master**: Lossless, all-intra (GOP=1) "All-Keyframe" masters (suffix `_hq.mp4`) for professional post-production grade quality.
+
+### ⚡ Smart UI & Monitoring
+- **Real-time Progress**: Frame-by-frame progress tracking with percentage and status updates.
+- **Unified Controls**: Integrated Playback, Skeleton, and Loop controls across all pages.
 
 ---
 
 ## 🛠️ Architecture & Workflow
 
 ### How it works:
-1.  **Analyze**: Extract 33 3D landmarks from your source video.
+1.  **Analyze**: Extract 33 (Pose) or 543 (Holistic) landmarks from your source.
 2.  **Keyframe**: Set a global "anchor pose" that every action should return to.
-3.  **Slice**: Identify specific motion segments (e.g., a wave, a nod).
-4.  **Align (MLS)**: Force the last few frames to "warp" towards the anchor pose.
-5.  **Smooth (RIFE)**: Interpolate transition frames to eliminate velocity gaps.
+3.  **Slice**: Identify specific motion segments with frame-accurate precision.
+4.  **Align (MLS)**: Use Bridge or Progressive warping to force alignment with the anchor.
+5.  **Smooth (RIFE)**: Interpolate frames to eliminate any remaining velocity gaps.
 
 ---
 
@@ -62,7 +67,6 @@ Frame-accurate timeline with "Pin current frame" functionality and instant slice
     ```
 
 3.  **High-Performance PyTorch (CUDA 12.1+):**
-    *Recommended for RTX 4090/5080 users:*
     ```bash
     pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
     ```

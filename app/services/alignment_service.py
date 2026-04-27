@@ -249,14 +249,31 @@ class AlignmentService:
         fade_in_frames = int(params.get('fade_in_frames', 15))
         alpha = float(params.get('alpha', 1.0))
         
-        # 3. Setup Warp Points with Foot Anchors
+        # 3. Setup Warp Points with Foot Anchors & Sparse Hand Anchoring
         def get_anchored_dst(src, target):
             dst = target.copy() * [width, height]
             s_px = src.copy() * [width, height]
+            
             # Anchor lower body for stability (indices 25-32 in Pose)
-            # Holistic has 543 points, pose is the first 33.
             if len(dst) >= 33:
                 dst[25:33] = s_px[25:33] 
+            
+            # NEW: Rigid Hand Translation (Indices 501-542)
+            # We move hands as a whole based on the wrist displacement, but we DO NOT 
+            # collapse the points. This maintains a balanced weight in the MLS algorithm,
+            # ensuring the face (indices 33-500) remains unaffected and accurate.
+            if len(dst) == 543:
+                # Left Hand: 501-521, Right Hand: 522-542. Wrist is index 0 in each hand set.
+                for wrist_idx, h_start, h_end in [(501, 501, 522), (522, 522, 543)]:
+                    wrist_src = s_px[wrist_idx]
+                    wrist_dst = dst[wrist_idx]
+                    disp = wrist_dst - wrist_src
+                    
+                    for i in range(h_start, h_end):
+                        # Keep the original relative structure of the hand
+                        # but apply the same global displacement to every point.
+                        dst[i] = s_px[i] + disp
+                    
             return s_px, dst
 
         first_src_px, first_dst_px = get_anchored_dst(first_lms, target_lms)
@@ -270,19 +287,35 @@ class AlignmentService:
                 "refine_progress": int((i + 1) / total_frames * 90)
             })
 
-            if i < fade_in_frames:
-                weight = 1.0 - (i / fade_in_frames)
-                curr_dst = first_src_px * (1 - weight) + first_dst_px * weight
-                warped = self.mls_warp_image(frame, first_src_px, curr_dst, alpha=alpha)
-                output_frames.append(warped)
-            elif i >= (total_frames - fade_out_frames):
-                dist_from_end = total_frames - 1 - i
-                weight = 1.0 - (dist_from_end / max(1, fade_out_frames - 1))
-                curr_dst = last_src_px * (1 - weight) + last_dst_px * weight
-                warped = self.mls_warp_image(frame, last_src_px, curr_dst, alpha=alpha)
+            if strategy == 'global':
+                # Global (Bridge) strategy: 
+                # At i=0, we use the warp that fixes the first frame.
+                # At i=last, we use the warp that fixes the last frame.
+                # In between, we interpolate the transformation source and destination.
+                weight = i / (total_frames - 1)
+                
+                # Interpolate control points (src) and target points (dst)
+                # This smoothly shifts the alignment logic from "fixing the start" to "fixing the end"
+                curr_src = first_src_px * (1 - weight) + last_src_px * weight
+                curr_dst = first_dst_px * (1 - weight) + last_dst_px * weight
+                
+                warped = self.mls_warp_image(frame, curr_src, curr_dst, alpha=alpha)
                 output_frames.append(warped)
             else:
-                output_frames.append(frame)
+                # Progressive strategy (Fade In / Fade Out)
+                if i < fade_in_frames:
+                    weight = 1.0 - (i / fade_in_frames)
+                    curr_dst = first_src_px * (1 - weight) + first_dst_px * weight
+                    warped = self.mls_warp_image(frame, first_src_px, curr_dst, alpha=alpha)
+                    output_frames.append(warped)
+                elif i >= (total_frames - fade_out_frames):
+                    dist_from_end = total_frames - 1 - i
+                    weight = 1.0 - (dist_from_end / max(1, fade_out_frames - 1))
+                    curr_dst = last_src_px * (1 - weight) + last_dst_px * weight
+                    warped = self.mls_warp_image(frame, last_src_px, curr_dst, alpha=alpha)
+                    output_frames.append(warped)
+                else:
+                    output_frames.append(frame)
 
         # 4. Write Output
         temp_out = output_path + ".tmp.mp4"
@@ -291,19 +324,35 @@ class AlignmentService:
         out.release()
         
         import subprocess
-        ffmpeg_cmd = [
+        # Pass 1: Web Optimized Preview (Fast, Small, Browser-friendly)
+        ffmpeg_web = [
             "ffmpeg", "-y", "-i", temp_out, "-i", source_path, 
             "-map", "0:v", "-map", "1:a?", 
             "-c:v", "libx264", 
-            "-crf", "0", 
-            "-preset", "veryslow", 
-            "-g", "1", 
-            "-bf", "0", 
+            "-crf", "23", 
+            "-preset", "faster", 
             "-pix_fmt", "yuv420p",
             "-c:a", "copy", 
             output_path
         ]
-        subprocess.run(ffmpeg_cmd, capture_output=True)
+        subprocess.run(ffmpeg_web, capture_output=True)
+
+        # Pass 2: High-Quality Master (Lossless, All Keyframes for Production)
+        output_hq = output_path.replace(".mp4", "_hq.mp4")
+        ffmpeg_hq = [
+            "ffmpeg", "-y", "-i", temp_out, "-i", source_path, 
+            "-map", "0:v", "-map", "1:a?", 
+            "-c:v", "libx264", 
+            "-crf", "0", 
+            "-preset", "medium", 
+            "-g", "1", 
+            "-bf", "0", 
+            "-pix_fmt", "yuv420p",
+            "-c:a", "copy", 
+            output_hq
+        ]
+        subprocess.run(ffmpeg_hq, capture_output=True)
+
         if os.path.exists(temp_out): os.remove(temp_out)
         storage.update_video(video_id, {"refine_status": "idle", "refine_progress": 100})
         return True

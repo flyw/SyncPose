@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, BackgroundTasks
 from app.db.storage import storage
 from app.services.alignment_service import alignment_service
 import os
@@ -6,8 +6,27 @@ import numpy as np
 import cv2
 import re
 from datetime import datetime
+import asyncio
 
 router = APIRouter()
+
+async def run_refinement_task(video_id, operation, source_path, output_path, params, remarks, clips_dir, output_filename):
+    try:
+        if operation == 'mls':
+            success = await alignment_service.process_mls(video_id, source_path, output_path, params)
+        elif operation == 'holistic':
+            success = await alignment_service.process_holistic_mls(video_id, source_path, output_path, params)
+        elif operation == 'rife':
+            success = await alignment_service.process_rife(video_id, source_path, output_path, params)
+        else:
+            success = False
+        
+        if success:
+            storage._save_clip_metadata(clips_dir, output_filename, {"remarks": remarks})
+    except Exception as e:
+        print(f"Background Task Error: {e}")
+    finally:
+        storage.update_video(video_id, {"refine_status": "idle", "refine_progress": 100})
 
 @router.get("/{video_id}/clips")
 async def get_clips(video_id: str):
@@ -15,7 +34,7 @@ async def get_clips(video_id: str):
     return clips
 
 @router.post("/{video_id}/process")
-async def process_clip(video_id: str, request: Request):
+async def process_clip(video_id: str, request: Request, background_tasks: BackgroundTasks):
     data = await request.json()
     video = storage.get_video(video_id)
     if not video:
@@ -34,49 +53,34 @@ async def process_clip(video_id: str, request: Request):
     # Generate output filename with timestamp
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     name_base, ext = os.path.splitext(source_filename)
-    
-    # Remove previous timestamps if they exist
     name_base = re.sub(r'_\d{8}_\d{6}$', '', name_base)
     
+    strategy = params.get('strategy', 'prog')
     suffix = f"_{operation}"
     if operation == 'mls':
-        strategy = params.get('strategy', 'prog')
         suffix = f"_mls_{strategy}"
+    elif operation == 'holistic':
+        suffix = f"_holistic_{strategy}"
     elif operation == 'rife':
         suffix = f"_rife"
         
     output_filename = f"{name_base}{suffix}_{timestamp}{ext}"
     output_path = os.path.join(video["clips_dir"], output_filename)
     
-    # Call the service
-    try:
-        if operation == 'mls':
-            if manual_lms: params['manual_target_lms'] = manual_lms
-            success = await alignment_service.process_mls(video_id, source_path, output_path, params)
-        elif operation == 'holistic':
-            if manual_lms: params['manual_target_lms'] = manual_lms
-            success = await alignment_service.process_holistic_mls(video_id, source_path, output_path, params)
-        elif operation == 'rife':
-            success = await alignment_service.process_rife(video_id, source_path, output_path, params)
-        else:
-            raise HTTPException(status_code=400, detail="Invalid operation")
-            
-        if not success:
-            raise HTTPException(status_code=500, detail="Processing failed")
-        
-        # Save remarks to metadata
-        storage._save_clip_metadata(video["clips_dir"], output_filename, {"remarks": remarks})
-            
-    except Exception as e:
-        import traceback
-        error_details = traceback.format_exc()
-        print(f"Refinement Error: {str(e)}")
-        print(error_details)
-        raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
-        
+    if manual_lms: 
+        params['manual_target_lms'] = manual_lms
+
+    if not remarks:
+        remarks = f"{operation.upper()} ({strategy})"
+
+    background_tasks.add_task(
+        run_refinement_task,
+        video_id, operation, source_path, output_path, params, remarks, video["clips_dir"], output_filename
+    )
+    
     return {
-        "filename": output_filename, 
-        "url": f"/uploads/{video_id}/clips/{output_filename}"
+        "status": "started",
+        "filename": output_filename
     }
 
 @router.delete("/{video_id}/clips/{filename}")
@@ -91,6 +95,10 @@ async def delete_clip(video_id: str, filename: str):
     
     try:
         os.remove(clip_path)
+        # Also try to remove the HQ version if it exists
+        hq_path = clip_path.replace(".mp4", "_hq.mp4")
+        if os.path.exists(hq_path):
+            os.remove(hq_path)
         return {"message": "Clip deleted successfully"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to delete clip: {str(e)}")
@@ -174,12 +182,75 @@ async def preview_mls(video_id: str, request: Request):
     src_px = warp_lms * [w, h]
     dst_px = target_lms * [w, h]
     
-    # Anchor lower body for stability (indices 25-32 in Pose)
-    # This locks knees to feet to prevent sliding.
-    if len(dst_px) >= 33:
-        dst_px[25:33] = src_px[25:33]
+    # Strategy-based weight
+    strategy = params.get('strategy', 'progressive')
     
-    warped = alignment_service.mls_warp_image(warp_frame, src_px, dst_px, alpha=alpha, draw_grid=show_grid)
+    if strategy == 'global':
+        # In global mode, we interpolate between first and last frame's alignment state
+        weight = target_idx / max(1, total_frames - 1)
+        
+        # We need landmarks for first and last frames to compute the bridge
+        cap = cv2.VideoCapture(source_path)
+        ret_f, first_f = cap.read()
+        cap.set(cv2.CAP_PROP_POS_FRAMES, total_frames - 1)
+        ret_l, last_f = cap.read()
+        cap.release()
+        
+        first_lms = lm_func(first_f)
+        last_lms = lm_func(last_f)
+        
+        if first_lms is not None and last_lms is not None:
+            f_src = first_lms * [w, h]
+            l_src = last_lms * [w, h]
+            target_px = target_lms * [w, h]
+            
+            # Create anchored targets for both ends
+            f_dst = target_px.copy(); l_dst = target_px.copy()
+            if len(target_px) >= 33:
+                f_dst[25:33] = f_src[25:33]
+                l_dst[25:33] = l_src[25:33]
+            
+            # Rigid Hand Translation for Holistic Preview
+            if len(target_px) == 543:
+                # Left Hand: 501, Right Hand: 522
+                for w_idx, h_start, h_end in [(501, 501, 522), (522, 522, 543)]:
+                    # For first frame bridge
+                    f_disp = f_dst[w_idx] - f_src[w_idx]
+                    for i in range(h_start, h_end):
+                        f_dst[i] = f_src[i] + f_disp
+                    # For last frame bridge
+                    l_disp = l_dst[w_idx] - l_src[w_idx]
+                    for i in range(h_start, h_end):
+                        l_dst[i] = l_src[i] + l_disp
+            
+            # Interpolated source and destination for the current frame
+            curr_src_px = f_src * (1 - weight) + l_src * weight
+            curr_dst_px = f_dst * (1 - weight) + l_dst * weight
+            
+            warped = alignment_service.mls_warp_image(warp_frame, curr_src_px, curr_dst_px, alpha=alpha, draw_grid=show_grid)
+        else:
+            # Fallback if detection fails
+            warped = alignment_service.mls_warp_image(warp_frame, src_px, dst_px, alpha=alpha, draw_grid=show_grid)
+    else:
+        # Progressive mode weight (remains as before but uses weight variable)
+        weight = 1.0
+        fade_in = int(params.get('fade_in_frames', 15))
+        fade_out = int(params.get('fade_out_frames', 15))
+        
+        if target_idx < fade_in:
+            weight = 1.0 - (target_idx / max(1, fade_in))
+        elif target_idx >= (total_frames - fade_out):
+            dist_from_end = total_frames - 1 - target_idx
+            weight = 1.0 - (dist_from_end / max(1, fade_out - 1))
+        else:
+            weight = 0.0
+            
+        # Anchor feet for progressive
+        if len(dst_px) >= 33:
+            dst_px[25:33] = src_px[25:33]
+        
+        curr_dst = src_px * (1 - weight) + dst_px * weight
+        warped = alignment_service.mls_warp_image(warp_frame, src_px, curr_dst, alpha=alpha, draw_grid=show_grid)
     
     preview_filename = f"preview_{video_id}.jpg"
     preview_path = os.path.join(video["clips_dir"], preview_filename)

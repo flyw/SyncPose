@@ -61,25 +61,48 @@ async def export_slice(video_id: str, request: Request):
     start_time = start_frame / fps
     duration = (end_frame - start_frame) / fps
     
-    # FFmpeg command for Lossless All-Intra extraction (Professional Post-production grade)
-    cmd = [
+    # Pass 1: Web Optimized Preview (Fast, Small, Browser-friendly)
+    cmd_web = [
         "ffmpeg", "-y", 
         "-ss", f"{start_time:.4f}", 
         "-t", f"{duration:.4f}",
         "-i", video['path'],
         "-c:v", "libx264", 
-        "-preset", "veryslow", 
-        "-crf", "0",              # 0 means Lossless
-        "-g", "1",                # Every frame is an Intra-frame (Keyframe)
-        "-bf", "0",               # No B-frames
+        "-preset", "faster", 
+        "-crf", "23", 
+        "-pix_fmt", "yuv420p",
         "-c:a", "copy",
         output_path
     ]
     
-    process = subprocess.run(cmd, capture_output=True, text=True)
-    if process.returncode != 0:
-        print(f"FFmpeg Error: {process.stderr}")
-        raise HTTPException(status_code=500, detail="FFmpeg processing failed")
+    # Pass 2: High-Quality Master (Lossless, All Keyframes for Production)
+    output_hq = output_path.replace(".mp4", "_hq.mp4")
+    cmd_hq = [
+        "ffmpeg", "-y", 
+        "-ss", f"{start_time:.4f}", 
+        "-t", f"{duration:.4f}",
+        "-i", video['path'],
+        "-c:v", "libx264", 
+        "-preset", "medium", 
+        "-crf", "0",              # 0 means Lossless
+        "-g", "1",                # Every frame is an Intra-frame (Keyframe)
+        "-bf", "0",               # No B-frames
+        "-pix_fmt", "yuv420p",
+        "-c:a", "copy",
+        output_hq
+    ]
+    
+    # Run Web export
+    process_web = subprocess.run(cmd_web, capture_output=True, text=True)
+    if process_web.returncode != 0:
+        print(f"FFmpeg Web Error: {process_web.stderr}")
+        raise HTTPException(status_code=500, detail="FFmpeg web processing failed")
+
+    # Run HQ export
+    process_hq = subprocess.run(cmd_hq, capture_output=True, text=True)
+    if process_hq.returncode != 0:
+        print(f"FFmpeg HQ Error: {process_hq.stderr}")
+        # Not raising here as web version was successful, but logging it
     
     return {
         "filename": output_filename,
