@@ -89,6 +89,7 @@ export default class RefinementPage {
                             <select id="refine-method" style="width: 100%; background: #0f172a; color: white; border: 1px solid var(--border); padding: 10px; border-radius: 4px; font-size: 13px;">
                                 <option value="mls">Spatial Alignment (33 pts)</option>
                                 <option value="holistic">Holistic Alignment (543 pts)</option>
+                                <option value="contour">Silhouette Alignment (Contour)</option>
                                 <option value="rife">Temporal Smoothing (RIFE)</option>
                             </select>
                         </div>
@@ -162,7 +163,7 @@ export default class RefinementPage {
                 const groups = {};
                 const baseNamesOrder = [];
                 clips.forEach(clip => {
-                    const baseName = clip.filename.replace(/\.[^/.]+$/, "").split(/(_mls_|_holistic_|_rife_|_\d{8}_\d{6})/)[0];
+                    const baseName = clip.filename.replace(/\.[^/.]+$/, "").split(/(_mls_|_holistic_|_contour_|_rife_|_\d{8}_\d{6})/)[0];
                     if (!groups[baseName]) { groups[baseName] = []; baseNamesOrder.push(baseName); }
                     groups[baseName].push(clip);
                 });
@@ -278,20 +279,32 @@ export default class RefinementPage {
                 if (cR > vR) { dH = ch; dW = ch * vR; oX = (cw - dW) / 2; oY = 0; }
                 else { dW = cw; dH = cw / vR; oX = 0; oY = (ch - dH) / 2; }
                 this.ctx.globalAlpha = opacity;
-                const isH = lms.length > 33;
+                const isH = lms.length === 543;
+                const isC = lms.length === 133;
 
                 this.ctx.strokeStyle = color; this.ctx.lineWidth = 2;
                 CONNECTIONS.forEach(([i, j]) => {
-                    if (i >= lms.length || j >= lms.length || (isH && (i < 11 || j < 11))) return;
+                    if (i >= lms.length || j >= lms.length || ((isH || isC) && (i < 11 || j < 11))) return;
                     const p1 = lms[i], p2 = lms[j];
                     if (p1[3] > 0.3 && p2[3] > 0.3) { this.ctx.beginPath(); this.ctx.moveTo(p1[0]*dW+oX, p1[1]*dH+oY); this.ctx.lineTo(p2[0]*dW+oX, p2[1]*dH+oY); this.ctx.stroke(); }
                 });
                 if (isH) {
                     this.ctx.fillStyle = color === '#fbbf24' ? '#f59e0b' : '#22d3ee';
-                    for (let i = 33; i < 33 + 478; i += 3) { 
+                    for (let i = 33; i < 33 + 468; i += 3) { 
                         const p = lms[i];
                         if (p) { this.ctx.beginPath(); this.ctx.arc(p[0]*dW+oX, p[1]*dH+oY, 1, 0, Math.PI*2); this.ctx.fill(); }
                     }
+                }
+                if (isC) {
+                    this.ctx.fillStyle = color === '#fbbf24' ? '#f59e0b' : '#22d3ee';
+                    this.ctx.beginPath();
+                    for (let i = 33; i < 133; i++) {
+                        const p = lms[i];
+                        if (i === 33) this.ctx.moveTo(p[0]*dW+oX, p[1]*dH+oY);
+                        else this.ctx.lineTo(p[0]*dW+oX, p[1]*dH+oY);
+                    }
+                    this.ctx.closePath();
+                    this.ctx.stroke();
                 }
                 this.ctx.fillStyle = color;
                 lms.forEach((p, idx) => { 
@@ -305,7 +318,7 @@ export default class RefinementPage {
                 const container = document.getElementById('method-params-container');
                 const previewTools = document.getElementById('preview-tools');
                 
-                if (method === 'mls' || method === 'holistic') {
+                if (method === 'mls' || method === 'holistic' || method === 'contour') {
                     previewTools.classList.remove('hidden');
                     container.innerHTML = `
                         <div class="control-group" style="background: rgba(255,255,255,0.03); padding: 10px; border-radius: 4px; margin-top: 10px;">
@@ -614,7 +627,10 @@ export default class RefinementPage {
             // 33 for mls, 543 for holistic. If user hasn't edited, we let backend handle defaults.
             if (this.targetLandmarks) {
                 const isHolistic = method === 'holistic';
-                if ((isHolistic && this.targetLandmarks.length === 543) || (!isHolistic && this.targetLandmarks.length === 33)) {
+                const isContour = method === 'contour';
+                if ((isHolistic && this.targetLandmarks.length === 543) || 
+                    (isContour && this.targetLandmarks.length === 133) || 
+                    (method === 'mls' && this.targetLandmarks.length === 33)) {
                     data.manual_target_lms = this.targetLandmarks;
                 }
             }

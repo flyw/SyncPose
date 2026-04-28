@@ -17,6 +17,8 @@ async def run_refinement_task(video_id, operation, source_path, output_path, par
             success = await alignment_service.process_mls(video_id, source_path, output_path, params)
         elif operation == 'holistic':
             success = await alignment_service.process_holistic_mls(video_id, source_path, output_path, params)
+        elif operation == 'contour':
+            success = await alignment_service.process_contour_mls(video_id, source_path, output_path, params)
         elif operation == 'rife':
             result = await alignment_service.process_rife(video_id, source_path, output_path, params)
             success = result.get("success", False)
@@ -71,6 +73,8 @@ async def process_clip(video_id: str, request: Request, background_tasks: Backgr
         suffix = f"_mls_{strategy}"
     elif operation == 'holistic':
         suffix = f"_holistic_{strategy}"
+    elif operation == 'contour':
+        suffix = f"_contour_{strategy}"
     elif operation == 'rife':
         suffix = f"_rife"
         
@@ -157,7 +161,13 @@ async def preview_mls(video_id: str, request: Request):
     if not ret or not ret2:
         raise HTTPException(status_code=500, detail="Failed to read frames from clip")
         
-    lm_func = alignment_service.get_holistic_landmarks if method == 'holistic' else alignment_service.get_landmarks
+    if method == 'holistic':
+        lm_func = alignment_service.get_holistic_landmarks
+    elif method == 'contour':
+        lm_func = alignment_service.get_contour_landmarks
+    else:
+        lm_func = alignment_service.get_landmarks
+        
     warp_lms = lm_func(warp_frame)
 
     # 2. Get target landmarks (Priority: Manual > Project Global Keyframe > Clip First Frame)
@@ -166,14 +176,14 @@ async def preview_mls(video_id: str, request: Request):
         target_lms = np.array(manual_lms)[:, :2] # Ensure only x, y
     elif video.get("keyframes") and len(video["keyframes"]) > 0:
         try:
-            # For holistic, we need to extract from keyframe if not cached (cache is usually 33 pts)
-            if method == 'holistic':
-                # Load the frame image to extract holistic
+            # For holistic/contour, we need to extract from keyframe if not cached (cache is usually 33 pts)
+            if method in ['holistic', 'contour']:
+                # Load the frame image to extract landmarks
                 kf = video["keyframes"][0]
                 kf_path = os.path.join(os.path.dirname(video["clips_dir"]), "keyframes", f"frame_{kf['frame']}.jpg")
                 if os.path.exists(kf_path):
                     kf_img = cv2.imread(kf_path)
-                    target_lms = alignment_service.get_holistic_landmarks(kf_img)
+                    target_lms = lm_func(kf_img)
             else:
                 pose_data = np.load(video["pose_cache"])
                 ref_idx = video["keyframes"][0]["frame"]
@@ -189,8 +199,8 @@ async def preview_mls(video_id: str, request: Request):
         raise HTTPException(status_code=400, detail="Could not detect landmarks for alignment")
         
     h, w = warp_frame.shape[:2]
-    src_px = warp_lms * [w, h]
-    dst_px = target_lms * [w, h]
+    src_px = warp_lms[:, :2] * [w, h]
+    dst_px = target_lms[:, :2] * [w, h]
     
     # Strategy-based weight
     strategy = params.get('strategy', 'progressive')
@@ -210,9 +220,9 @@ async def preview_mls(video_id: str, request: Request):
         last_lms = lm_func(last_f)
         
         if first_lms is not None and last_lms is not None:
-            f_src = first_lms * [w, h]
-            l_src = last_lms * [w, h]
-            target_px = target_lms * [w, h]
+            f_src = first_lms[:, :2] * [w, h]
+            l_src = last_lms[:, :2] * [w, h]
+            target_px = target_lms[:, :2] * [w, h]
             
             # Create anchored targets for both ends
             f_dst = target_px.copy(); l_dst = target_px.copy()

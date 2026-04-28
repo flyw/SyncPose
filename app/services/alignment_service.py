@@ -14,8 +14,11 @@ class AlignmentService:
         self.holistic_landmarker = None
         self._init_pose()
 
-    def _init_pose(self):
-        if self.pose_landmarker: return
+    def _init_pose(self, enable_segmentation=False):
+        # Re-initialize if segmentation setting changed
+        if self.pose_landmarker and getattr(self, '_seg_enabled', False) == enable_segmentation:
+            return
+            
         base_options = python.BaseOptions(model_asset_path=settings.MODEL_PATH)
         options = vision.PoseLandmarkerOptions(
             base_options=base_options,
@@ -24,9 +27,59 @@ class AlignmentService:
             min_pose_detection_confidence=0.5,
             min_pose_presence_confidence=0.5,
             min_tracking_confidence=0.5,
-            output_segmentation_masks=False
+            output_segmentation_masks=enable_segmentation
         )
         self.pose_landmarker = vision.PoseLandmarker.create_from_options(options)
+        self._seg_enabled = enable_segmentation
+
+    def get_landmarks(self, frame):
+        """Extract landmarks from a single frame using MediaPipe Tasks API (33 pts)."""
+        self._init_pose(enable_segmentation=False)
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        results = self.pose_landmarker.detect(mp_image)
+        
+        if results.pose_landmarks:
+            # Return x, y, z, visibility (4 values)
+            return np.array([[lm.x, lm.y, lm.z, getattr(lm, 'visibility', 1.0)] for lm in results.pose_landmarks[0]])
+        return None
+
+    def get_contour_landmarks(self, frame, num_points=100):
+        """Extract 33 pose landmarks + 100 silhouette contour points."""
+        self._init_pose(enable_segmentation=True)
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        results = self.pose_landmarker.detect(mp_image)
+        
+        if not results.pose_landmarks or not results.segmentation_masks:
+            return self.get_landmarks(frame) # Fallback
+            
+        # Pose landmarks with 4 values
+        lms = np.array([[lm.x, lm.y, lm.z, getattr(lm, 'visibility', 1.0)] for lm in results.pose_landmarks[0]])
+        # Binary mask
+        mask = results.segmentation_masks[0].numpy_view()
+        h, w = mask.shape[:2]
+        mask = (mask.reshape(h, w) > 0.5).astype(np.uint8) * 255
+        
+        # Torso centroid for radial sampling
+        center_x = (lms[11,0] + lms[12,0] + lms[23,0] + lms[24,0]) / 4
+        center_y = (lms[11,1] + lms[12,1] + lms[23,1] + lms[24,1]) / 4
+        
+        cx, cy = center_x * w, center_y * h
+        contour_pts = []
+        
+        for angle in np.linspace(0, 2*np.pi, num_points, endpoint=False):
+            dx, dy = np.cos(angle), np.sin(angle)
+            max_dist = max(w, h)
+            hit_pt = [center_x, center_y, 0, 1.0] # [x, y, z, vis]
+            
+            for d in range(int(max_dist), 0, -3):
+                tx, ty = int(cx + dx * d), int(cy + dy * d)
+                if 0 <= tx < w and 0 <= ty < h:
+                    if mask[ty, tx] > 0:
+                        hit_pt = [tx / w, ty / h, 0, 1.0]
+                        break
+            contour_pts.append(hit_pt)
+            
+        return np.concatenate([lms, np.array(contour_pts)])
 
     def _init_holistic(self):
         if self.holistic_landmarker: return
@@ -208,121 +261,123 @@ class AlignmentService:
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         
         if total_frames < 2: return False
-        frames = []
-        while True:
-            ret, frame = cap.read()
-            if not ret: break
-            frames.append(frame)
-        cap.release()
         
-        # 1. Get Landmarks
+        # Get first and last frame landmarks for alignment
+        ret, first_frame = cap.read()
+        if not ret: 
+            cap.release()
+            return False
+        first_lms = lm_func(first_frame)
+        
+        cap.set(cv2.CAP_PROP_POS_FRAMES, total_frames - 1)
+        ret, last_frame = cap.read()
+        if not ret:
+            # Fallback to current frame if last is not readable
+            last_frame = first_frame
+        last_lms = lm_func(last_frame)
+        
+        if first_lms is None or last_lms is None:
+            cap.release()
+            storage.update_video(video_id, {"refine_status": "idle", "refine_progress": 100})
+            return False
+
+        # 1. Get Landmarks (Target)
         target_lms = None 
         if params.get('manual_target_lms'):
-            target_lms = np.array(params['manual_target_lms'])[:, :2]
+            target_lms = np.array(params['manual_target_lms'])
         elif video.get("keyframes") and len(video["keyframes"]) > 0:
             try:
                 kf = video["keyframes"][0]
                 if lm_func == self.get_landmarks: # Standard 33 pts
                     pose_data = np.load(video["pose_cache"])
-                    target_lms = pose_data[kf["frame"]][:, :2]
-                else: # Holistic 543 pts
+                    target_lms = pose_data[kf["frame"]]
+                else: # Holistic (543) or Contour (133)
                     kf_path = os.path.join(os.path.dirname(video["clips_dir"]), "keyframes", f"frame_{kf['frame']}.jpg")
                     if os.path.exists(kf_path):
                         kf_img = cv2.imread(kf_path)
-                        target_lms = self.get_holistic_landmarks(kf_img)
+                        target_lms = lm_func(kf_img)
             except Exception as e:
                 print(f"Error loading target lms: {e}")
                 pass
         
-        if target_lms is None: target_lms = lm_func(frames[0])
+        if target_lms is None: target_lms = first_lms
             
-        first_lms = lm_func(frames[0])
-        last_lms = lm_func(frames[-1])
-        
-        if first_lms is None or last_lms is None:
-            storage.update_video(video_id, {"refine_status": "idle", "refine_progress": 100})
-            return False
-
         # 2. Parameters
         strategy = params.get('strategy', 'progressive')
         fade_out_frames = int(params.get('fade_out_frames', 15))
         fade_in_frames = int(params.get('fade_in_frames', 15))
         alpha = float(params.get('alpha', 1.0))
         
-        # 3. Setup Warp Points with Foot Anchors & Sparse Hand Anchoring
+        # 3. Setup Warp Points
         def get_anchored_dst(src, target):
-            dst = target.copy() * [width, height]
-            s_px = src.copy() * [width, height]
-            
-            # Anchor lower body for stability (indices 25-32 in Pose)
-            if len(dst) >= 33:
-                dst[25:33] = s_px[25:33] 
-            
-            # NEW: Rigid Hand Translation (Indices 501-542)
-            # We move hands as a whole based on the wrist displacement, but we DO NOT 
-            # collapse the points. This maintains a balanced weight in the MLS algorithm,
-            # ensuring the face (indices 33-500) remains unaffected and accurate.
+            s_xy = src[:, :2]
+            t_xy = target[:, :2]
+            dst = t_xy.copy() * [width, height]
+            s_px = s_xy.copy() * [width, height]
+            if len(dst) >= 33: dst[25:33] = s_px[25:33] 
             if len(dst) == 543:
-                # Left Hand: 501-521, Right Hand: 522-542. Wrist is index 0 in each hand set.
                 for wrist_idx, h_start, h_end in [(501, 501, 522), (522, 522, 543)]:
-                    wrist_src = s_px[wrist_idx]
-                    wrist_dst = dst[wrist_idx]
+                    wrist_src = s_px[wrist_idx]; wrist_dst = dst[wrist_idx]
                     disp = wrist_dst - wrist_src
-                    
-                    for i in range(h_start, h_end):
-                        # Keep the original relative structure of the hand
-                        # but apply the same global displacement to every point.
-                        dst[i] = s_px[i] + disp
-                    
+                    for i in range(h_start, h_end): dst[i] = s_px[i] + disp
             return s_px, dst
 
         first_src_px, first_dst_px = get_anchored_dst(first_lms, target_lms)
         last_src_px, last_dst_px = get_anchored_dst(last_lms, target_lms)
 
-        output_frames = []
-        for i, frame in enumerate(frames):
+        # 4. Process and Write Output
+        temp_out = output_path + ".tmp.mp4"
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        out = cv2.VideoWriter(temp_out, fourcc, fps, (width, height))
+        
+        if not out.isOpened():
+            print(f"Error: Could not open VideoWriter for {temp_out}")
+            cap.release()
+            storage.update_video(video_id, {"refine_status": "error: writer fail", "refine_progress": 0})
+            return False
+
+        # Reset to beginning for processing
+        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+        
+        for i in range(total_frames):
+            ret, frame = cap.read()
+            if not ret: break
+            
             await asyncio.sleep(0)
             storage.update_video(video_id, {
                 "refine_status": "warping",
                 "refine_progress": int((i + 1) / total_frames * 90)
             })
 
+            warped = None
             if strategy == 'global':
-                # Global (Bridge) strategy: 
-                # At i=0, we use the warp that fixes the first frame.
-                # At i=last, we use the warp that fixes the last frame.
-                # In between, we interpolate the transformation source and destination.
                 weight = i / (total_frames - 1)
-                
-                # Interpolate control points (src) and target points (dst)
-                # This smoothly shifts the alignment logic from "fixing the start" to "fixing the end"
                 curr_src = first_src_px * (1 - weight) + last_src_px * weight
                 curr_dst = first_dst_px * (1 - weight) + last_dst_px * weight
-                
                 warped = self.mls_warp_image(frame, curr_src, curr_dst, alpha=alpha)
-                output_frames.append(warped)
             else:
-                # Progressive strategy (Fade In / Fade Out)
                 if i < fade_in_frames:
                     weight = 1.0 - (i / fade_in_frames)
                     curr_dst = first_src_px * (1 - weight) + first_dst_px * weight
                     warped = self.mls_warp_image(frame, first_src_px, curr_dst, alpha=alpha)
-                    output_frames.append(warped)
                 elif i >= (total_frames - fade_out_frames):
                     dist_from_end = total_frames - 1 - i
                     weight = 1.0 - (dist_from_end / max(1, fade_out_frames - 1))
                     curr_dst = last_src_px * (1 - weight) + last_dst_px * weight
                     warped = self.mls_warp_image(frame, last_src_px, curr_dst, alpha=alpha)
-                    output_frames.append(warped)
                 else:
-                    output_frames.append(frame)
-
-        # 4. Write Output
-        temp_out = output_path + ".tmp.mp4"
-        out = cv2.VideoWriter(temp_out, cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height))
-        for f in output_frames: out.write(f)
+                    warped = frame
+            
+            out.write(warped)
+            
         out.release()
+        cap.release()
         
+        if not os.path.exists(temp_out) or os.path.getsize(temp_out) < 100:
+            print(f"Error: Temp video file {temp_out} is missing or too small.")
+            storage.update_video(video_id, {"refine_status": "error: temp file fail", "refine_progress": 0})
+            return False
+
         import subprocess
         # Pass 1: Web Optimized Preview (Fast, Small, Browser-friendly)
         ffmpeg_web = [
@@ -335,7 +390,9 @@ class AlignmentService:
             "-c:a", "copy", 
             output_path
         ]
-        subprocess.run(ffmpeg_web, capture_output=True)
+        res_web = subprocess.run(ffmpeg_web, capture_output=True, text=True)
+        if res_web.returncode != 0:
+            print(f"FFmpeg Web Error: {res_web.stderr}")
 
         # Pass 2: High-Quality Master (Lossless, All Keyframes for Production)
         output_hq = output_path.replace(".mp4", "_hq.mp4")
@@ -351,9 +408,17 @@ class AlignmentService:
             "-c:a", "copy", 
             output_hq
         ]
-        subprocess.run(ffmpeg_hq, capture_output=True)
+        res_hq = subprocess.run(ffmpeg_hq, capture_output=True, text=True)
+        if res_hq.returncode != 0:
+            print(f"FFmpeg HQ Error: {res_hq.stderr}")
 
         if os.path.exists(temp_out): os.remove(temp_out)
+        
+        # Verify final output exists
+        if not os.path.exists(output_path):
+            storage.update_video(video_id, {"refine_status": "error: ffmpeg fail", "refine_progress": 0})
+            return False
+
         storage.update_video(video_id, {"refine_status": "idle", "refine_progress": 100})
         return True
 
@@ -364,6 +429,10 @@ class AlignmentService:
     async def process_holistic_mls(self, video_id, source_path, output_path, params):
         """High-precision 543-point Holistic MLS alignment."""
         return await self._process_mls_core(video_id, source_path, output_path, params, self.get_holistic_landmarks)
+
+    async def process_contour_mls(self, video_id, source_path, output_path, params):
+        """High-precision 133-point Silhouette/Contour MLS alignment."""
+        return await self._process_mls_core(video_id, source_path, output_path, params, self.get_contour_landmarks)
 
     async def process_rife(self, video_id, source_path, output_path, params):
         from app.db.storage import storage

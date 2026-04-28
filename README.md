@@ -15,9 +15,11 @@ A non-destructive workflow allowing multiple optimization passes. Each "refined"
 
 ### 🧬 Enhanced MLS Warp (Moving Least Squares)
 Uses advanced mathematical algorithms to spatially deform video frames. This allows motion segments to perfectly match a global "Keyframe" pose.
+- **Silhouette Alignment (Contour)**: A hybrid approach using 133 points (33 pose landmarks + 100 radial silhouette points). Perfect for matching body volume and outer contours.
 - **Progressive Mode**: Configurable fade-in/out windows for surgical transition control.
 - **Global Bridge Mode**: Smooth linear interpolation across the entire video. Anchors both start and end frames to the target pose for perfect seamless loops.
-- **Rigid Hand Stabilization**: Specialized logic for Holistic-543 that treats hands as rigid bodies. Prevents "spaghetti" distortions while maintaining pixel-perfect facial and pose alignment.
+- **Rigid Hand Stabilization**: Specialized logic for Holistic-543 that treats hands as rigid bodies. Prevents "spaghetti" distortions.
+- **Memory Optimization**: Employs sequential frame-by-frame processing for infinite-length clips, ensuring stability on all systems.
 
 ### 👁️ Pro Visualization Tools
 - **Live Warp Preview**: Instantly generate and overlay a warped frame to compare against target poses.
@@ -47,7 +49,7 @@ Integrates the RIFE (Real-Time Intermediate Flow Estimation) AI model to elimina
 ## 🛠️ Architecture & Workflow
 
 ### How it works:
-1.  **Analyze**: Extract 33 (Pose) or 543 (Holistic) landmarks from your source.
+1.  **Analyze**: Extract 33 (Pose), 133 (Contour), or 543 (Holistic) landmarks from your source.
 2.  **Keyframe**: Set a global "anchor pose" that every action should return to.
 3.  **Slice**: Identify specific motion segments with frame-accurate precision.
 4.  **Align (MLS)**: Use Bridge or Progressive warping to force alignment with the anchor.
